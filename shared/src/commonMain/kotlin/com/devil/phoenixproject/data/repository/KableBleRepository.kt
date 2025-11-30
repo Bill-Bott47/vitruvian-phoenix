@@ -176,6 +176,11 @@ class KableBleRepository : BleRepository {
     // Flag to track explicit disconnect (to avoid auto-reconnect)
     private var isExplicitDisconnect = false
 
+    // Flag to track if we ever successfully connected (for auto-reconnect logic)
+    // This prevents auto-reconnect from firing on the initial Disconnected state
+    // when a Peripheral is first created (before connect() is even called)
+    private var wasEverConnected = false
+
     override suspend fun startScanning() {
         log.i { "Starting BLE scan for Vitruvian devices" }
         logRepo.info(LogEventType.SCAN_START, "Starting BLE scan for Vitruvian devices")
@@ -185,16 +190,65 @@ class KableBleRepository : BleRepository {
         _connectionState.value = ConnectionState.Scanning
 
         scanJob = Scanner {
-            // No specific filters - we'll filter by name
+            // No specific filters - we'll filter manually
         }
             .advertisements
+            .onEach { advertisement ->
+                // Debug logging for all advertisements
+                log.d { "RAW ADV: name=${advertisement.name}, id=${advertisement.identifier}, uuids=${advertisement.uuids}, rssi=${advertisement.rssi}" }
+            }
             .filter { advertisement ->
-                val name = advertisement.name ?: return@filter false
-                name.startsWith("Vee_") || name.startsWith("VIT")
+                // Filter by name if available
+                val name = advertisement.name
+                if (name != null) {
+                    val isVitruvian = name.startsWith("Vee_") || name.startsWith("VIT")
+                    if (isVitruvian) {
+                        log.i { "Found Vitruvian by name: $name" }
+                    }
+                    return@filter isVitruvian
+                }
+
+                // Check for Vitruvian service UUIDs (mServiceUuids)
+                val serviceUuids = advertisement.uuids
+                val hasVitruvianServiceUuid = serviceUuids.any { uuid ->
+                    val uuidStr = uuid.toString().lowercase()
+                    uuidStr.startsWith("0000fef3") ||
+                    uuidStr == "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+                }
+
+                if (hasVitruvianServiceUuid) {
+                    log.i { "Found Vitruvian by service UUID: ${advertisement.identifier}" }
+                    return@filter true
+                }
+
+                // CRITICAL: Check for FEF3 service data
+                // The Vitruvian device advertises FEF3 in serviceData, not serviceUuids!
+                // In Kable, serviceData is accessed differently - try to get FEF3 directly
+                val fef3Uuid = try {
+                    Uuid.parse("0000fef3-0000-1000-8000-00805f9b34fb")
+                } catch (e: Exception) {
+                    null
+                }
+
+                val hasVitruvianServiceData = if (fef3Uuid != null) {
+                    // Try to get data for FEF3 service UUID
+                    val fef3Data = advertisement.serviceData(fef3Uuid)
+                    if (fef3Data != null && fef3Data.isNotEmpty()) {
+                        log.i { "Found Vitruvian by FEF3 serviceData: ${advertisement.identifier}, data size: ${fef3Data.size}" }
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+
+                hasVitruvianServiceData
             }
             .onEach { advertisement ->
-                val name = advertisement.name ?: return@onEach
                 val identifier = advertisement.identifier.toString()
+                // Use name if available, otherwise use identifier as placeholder
+                val name = advertisement.name ?: "Vitruvian ($identifier)"
 
                 // Only log if this is a new device
                 if (!discoveredAdvertisements.containsKey(identifier)) {
@@ -290,6 +344,9 @@ class KableBleRepository : BleRepository {
                             _connectionState.value = ConnectionState.Connecting
                         }
                         is State.Connected -> {
+                            // Mark that we successfully connected (for auto-reconnect logic)
+                            wasEverConnected = true
+                            log.i { "✅ Connection established to ${device.name}" }
                             logRepo.info(
                                 LogEventType.CONNECT_SUCCESS,
                                 "Device connected successfully",
@@ -313,27 +370,39 @@ class KableBleRepository : BleRepository {
                             )
                         }
                         is State.Disconnected -> {
-                            // Capture device info BEFORE clearing state (needed for reconnection)
+                            // Capture device info and connection state BEFORE clearing
                             val deviceName = connectedDeviceName
                             val deviceAddress = connectedDeviceAddress
+                            val hadConnection = wasEverConnected
 
-                            logRepo.info(
-                                LogEventType.DISCONNECT,
-                                "Device disconnected",
-                                deviceName,
-                                deviceAddress
-                            )
+                            // Only process disconnect if we were actually connected
+                            if (hadConnection) {
+                                logRepo.info(
+                                    LogEventType.DISCONNECT,
+                                    "Device disconnected",
+                                    deviceName,
+                                    deviceAddress
+                                )
 
-                            // Stop heartbeat and reset state
-                            heartbeatJob?.cancel()
-                            heartbeatJob = null
-                            _connectionState.value = ConnectionState.Disconnected
-                            peripheral = null
-                            connectedDeviceName = ""
-                            connectedDeviceAddress = ""
+                                // Stop heartbeat and reset state
+                                heartbeatJob?.cancel()
+                                heartbeatJob = null
+                                _connectionState.value = ConnectionState.Disconnected
+                                peripheral = null
+                                connectedDeviceName = ""
+                                connectedDeviceAddress = ""
+                            } else {
+                                // This is the initial Disconnected state when Peripheral is created
+                                // Don't reset state or peripheral - we're about to call connect()
+                                log.d { "Peripheral initial state: Disconnected (awaiting connect() call)" }
+                                return@onEach  // Skip the rest of this handler
+                            }
 
-                            // Request auto-reconnect if this was NOT an explicit disconnect
-                            if (!isExplicitDisconnect && deviceAddress.isNotEmpty()) {
+                            // Request auto-reconnect ONLY if:
+                            // 1. We were previously connected (wasEverConnected)
+                            // 2. This was NOT an explicit disconnect
+                            // 3. We have a valid device address
+                            if (hadConnection && !isExplicitDisconnect && deviceAddress.isNotEmpty()) {
                                 log.i { "🔄 Requesting auto-reconnect to $deviceName ($deviceAddress)" }
                                 scope.launch {
                                     _reconnectionRequested.emit(
@@ -346,7 +415,10 @@ class KableBleRepository : BleRepository {
                                     )
                                 }
                             }
-                            isExplicitDisconnect = false  // Reset for next connection
+
+                            // Reset flags for next connection cycle
+                            isExplicitDisconnect = false
+                            wasEverConnected = false
                         }
                     }
                 }
@@ -405,6 +477,17 @@ class KableBleRepository : BleRepository {
             log.w { "MTU request failed: ${e.message}" }
         }
 
+        // Dump discovered services for debugging
+        try {
+            log.i { "📋 Attempting to enumerate discovered services..." }
+            // Note: Kable's services property returns List<DiscoveredService>?
+            // We'll log what we can to understand the device's GATT structure
+            val servicesStr = p.services?.toString() ?: "NULL"
+            log.i { "📋 Services: $servicesStr" }
+        } catch (e: Exception) {
+            log.e { "Failed to enumerate services: ${e.message}" }
+        }
+
         logRepo.info(
             LogEventType.SERVICE_DISCOVERED,
             "Device ready, starting notifications and heartbeat",
@@ -452,13 +535,14 @@ class KableBleRepository : BleRepository {
     }
 
     /**
-     * Perform heartbeat read on the TX characteristic.
+     * Perform heartbeat read on the MONITOR characteristic (not TX).
+     * TX is write-only and can't be read. Monitor reads are already working.
      * Returns true if read succeeded, false otherwise.
      */
     private suspend fun performHeartbeatRead(p: Peripheral): Boolean {
         return try {
-            p.read(txCharacteristic)
-            log.v { "Heartbeat read succeeded" }
+            p.read(monitorCharacteristic)
+            log.v { "Heartbeat read succeeded (monitor char)" }
             true
         } catch (e: Exception) {
             log.w { "Heartbeat read failed: ${e.message}" }
@@ -469,13 +553,19 @@ class KableBleRepository : BleRepository {
     /**
      * Send heartbeat no-op write as fallback when read fails.
      * Uses 4-byte no-op command (MUST be exactly 4 bytes).
+     * Tries WriteWithResponse first, then WithoutResponse.
      */
     private suspend fun sendHeartbeatNoOp(p: Peripheral) {
         try {
-            p.write(txCharacteristic, HEARTBEAT_NO_OP, WriteType.WithoutResponse)
-            log.v { "Heartbeat no-op write sent" }
-        } catch (e: Exception) {
-            log.w { "Heartbeat no-op write failed: ${e.message}" }
+            p.write(txCharacteristic, HEARTBEAT_NO_OP, WriteType.WithResponse)
+            log.v { "Heartbeat no-op write sent (WithResponse)" }
+        } catch (e1: Exception) {
+            try {
+                p.write(txCharacteristic, HEARTBEAT_NO_OP, WriteType.WithoutResponse)
+                log.v { "Heartbeat no-op write sent (WithoutResponse)" }
+            } catch (e2: Exception) {
+                log.w { "Heartbeat no-op write failed: ${e2.message}" }
+            }
         }
     }
 
@@ -525,14 +615,24 @@ class KableBleRepository : BleRepository {
 
         // Poll monitor characteristic for real-time metrics (heartbeat)
         scope.launch {
+            var failCount = 0
+            var successCount = 0
             try {
                 while (_connectionState.value is ConnectionState.Connected) {
                     try {
                         val data = p.read(monitorCharacteristic)
+                        successCount++
+                        if (successCount == 1 || successCount % 100 == 0) {
+                            log.i { "Monitor read SUCCESS #$successCount, data size: ${data.size}" }
+                        }
                         parseMonitorData(data)
+                        failCount = 0 // Reset fail count on success
                     } catch (e: Exception) {
-                        // Monitor characteristic might not be available on all devices
-                        log.d { "Monitor read failed: ${e.message}" }
+                        failCount++
+                        // Log first 5 failures and then every 50th failure
+                        if (failCount <= 5 || failCount % 50 == 0) {
+                            log.w { "Monitor read FAILED #$failCount: ${e.message}" }
+                        }
                     }
                     delay(100)
                 }
@@ -573,9 +673,16 @@ class KableBleRepository : BleRepository {
         }
 
         try {
-            // Use WriteType.WithoutResponse for faster writes (matches Nordic behavior)
-            p.write(txCharacteristic, command, WriteType.WithoutResponse)
-            log.d { "Command sent: ${command.size} bytes" }
+            // Try WriteWithResponse first (some devices don't support WithoutResponse)
+            // Fall back to WithoutResponse if WithResponse fails
+            try {
+                p.write(txCharacteristic, command, WriteType.WithResponse)
+                log.d { "Command sent (WithResponse): ${command.size} bytes" }
+            } catch (e: Exception) {
+                log.d { "WithResponse failed, trying WithoutResponse: ${e.message}" }
+                p.write(txCharacteristic, command, WriteType.WithoutResponse)
+                log.d { "Command sent (WithoutResponse): ${command.size} bytes" }
+            }
             logRepo.debug(
                 LogEventType.COMMAND_SENT,
                 "Sending command",

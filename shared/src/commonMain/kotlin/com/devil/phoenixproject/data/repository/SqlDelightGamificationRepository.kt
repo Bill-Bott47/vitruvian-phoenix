@@ -5,7 +5,7 @@ import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import co.touchlab.kermit.Logger
 import com.devil.phoenixproject.data.local.BadgeDefinitions
-import com.devil.phoenixproject.database.VitruvianDatabaseQueries
+import com.devil.phoenixproject.database.VitruvianDatabase
 import com.devil.phoenixproject.domain.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -23,8 +23,9 @@ import kotlin.time.Clock
  * SQLDelight implementation of GamificationRepository
  */
 class SqlDelightGamificationRepository(
-    private val queries: VitruvianDatabaseQueries
+    db: VitruvianDatabase
 ) : GamificationRepository {
+    private val queries = db.vitruvianDatabaseQueries
 
     override fun getEarnedBadges(): Flow<List<EarnedBadge>> {
         return queries.selectAllEarnedBadges()
