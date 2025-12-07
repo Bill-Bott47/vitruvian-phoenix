@@ -39,9 +39,6 @@ import com.devil.phoenixproject.presentation.navigation.NavGraph
 import com.devil.phoenixproject.presentation.navigation.NavigationRoutes
 import com.devil.phoenixproject.presentation.viewmodel.MainViewModel
 import com.devil.phoenixproject.ui.theme.ThemeMode
-import com.devil.phoenixproject.ui.theme.TopAppBarDark
-import com.devil.phoenixproject.ui.theme.TopAppBarLight
-import com.devil.phoenixproject.ui.theme.TextPrimary
 
 /**
  * Enhanced main screen with dynamic top bar and bottom navigation.
@@ -165,9 +162,9 @@ fun EnhancedMainScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = if (isDarkMode) TopAppBarDark else TopAppBarLight,
-                        titleContentColor = TextPrimary,
-                        actionIconContentColor = TextPrimary
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface,
+                        actionIconContentColor = MaterialTheme.colorScheme.onSurface
                     ),
                     actions = {
                         // Dynamic Actions from Screens
@@ -176,7 +173,7 @@ fun EnhancedMainScreen(
                                 Icon(
                                     imageVector = action.icon,
                                     contentDescription = action.description,
-                                    tint = TextPrimary
+                                    tint = MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }
