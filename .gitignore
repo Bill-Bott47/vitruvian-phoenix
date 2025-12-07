@@ -69,3 +69,6 @@ CHANGELOG.md
 /apktool.jar
 /vitruvian-official.apk
 /parent repo/
+
+# Git worktrees
+.worktrees/
