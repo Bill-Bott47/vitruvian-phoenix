@@ -49,6 +49,9 @@ fun GroupedExerciseList(
 ) {
     val coroutineScope = rememberCoroutineScope()
 
+    // Track which exercise row is currently revealed (only one at a time)
+    var revealedExerciseId by remember { mutableStateOf<String?>(null) }
+
     if (exercises.isEmpty()) {
         emptyContent()
         return
@@ -88,7 +91,11 @@ fun GroupedExerciseList(
                         exerciseRepository = exerciseRepository,
                         onSelect = { onExerciseSelected(exercise) },
                         onToggleFavorite = { onToggleFavorite(exercise) },
-                        onShowVideo = { videos -> onShowVideo(exercise, videos) }
+                        onShowVideo = { videos -> onShowVideo(exercise, videos) },
+                        isRevealed = exercise.id == revealedExerciseId,
+                        onRevealChange = { revealed ->
+                            revealedExerciseId = if (revealed) exercise.id else null
+                        }
                     )
                     HorizontalDivider(
                         thickness = 0.5.dp,
@@ -102,6 +109,7 @@ fun GroupedExerciseList(
         AlphabetStrip(
             letters = groupedExercises.keys.toList(),
             onLetterTap = { letter ->
+                revealedExerciseId = null // Close any revealed row when jumping
                 sectionIndices[letter]?.let { index ->
                     coroutineScope.launch {
                         listState.animateScrollToItem(index)
@@ -121,7 +129,9 @@ private fun ExerciseItemWithVideo(
     exerciseRepository: ExerciseRepository,
     onSelect: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onShowVideo: (List<ExerciseVideoEntity>) -> Unit
+    onShowVideo: (List<ExerciseVideoEntity>) -> Unit,
+    isRevealed: Boolean = false,
+    onRevealChange: (Boolean) -> Unit = {}
 ) {
     var videos by remember { mutableStateOf<List<ExerciseVideoEntity>>(emptyList()) }
     var isLoadingVideo by remember { mutableStateOf(true) }
@@ -157,7 +167,9 @@ private fun ExerciseItemWithVideo(
         onToggleFavorite = onToggleFavorite,
         onThumbnailClick = if (videos.isNotEmpty()) {
             { onShowVideo(videos) }
-        } else null
+        } else null,
+        isRevealed = isRevealed,
+        onRevealChange = onRevealChange
     )
 }
 

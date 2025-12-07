@@ -1,30 +1,46 @@
 package com.devil.phoenixproject.presentation.components.exercisepicker
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Star
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.devil.phoenixproject.domain.model.Exercise
+import kotlin.math.roundToInt
+
+private val REVEAL_WIDTH = 56.dp
+private val THRESHOLD_RATIO = 0.4f // Drag 40% of reveal width to trigger
 
 /**
- * Swipeable wrapper for exercise rows.
- * Swipe right to toggle favorite status.
+ * Exercise row with swipe-to-reveal favorite button.
+ *
+ * Swipe left to reveal star button. Button stays revealed until:
+ * - Tapped (toggles favorite)
+ * - Swiped back right
+ * - Another row is revealed (handled by parent via revealedExerciseId)
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SwipeableExerciseRow(
     exercise: Exercise,
@@ -33,67 +49,122 @@ fun SwipeableExerciseRow(
     onSelect: () -> Unit,
     onToggleFavorite: () -> Unit,
     onThumbnailClick: (() -> Unit)? = null,
+    isRevealed: Boolean = false,
+    onRevealChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.StartToEnd) {
-                onToggleFavorite()
-            }
-            false // Don't actually dismiss; reset position
-        }
+    val density = LocalDensity.current
+    val revealWidthPx = with(density) { REVEAL_WIDTH.toPx() }
+    val thresholdPx = revealWidthPx * THRESHOLD_RATIO
+
+    // Target offset: 0 when closed, -revealWidthPx when revealed
+    val targetOffset = if (isRevealed) -revealWidthPx else 0f
+    val animatedOffset by animateFloatAsState(
+        targetValue = targetOffset,
+        animationSpec = tween(durationMillis = 200),
+        label = "swipeOffset"
     )
 
-    // Reset state when exercise changes (e.g., favorite status updated)
-    LaunchedEffect(exercise.isFavorite) {
-        dismissState.reset()
-    }
+    // Track drag delta during gesture
+    var dragOffset by remember { mutableFloatStateOf(0f) }
 
-    SwipeToDismissBox(
-        state = dismissState,
-        enableDismissFromStartToEnd = true,
-        enableDismissFromEndToStart = false,
-        backgroundContent = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        if (exercise.isFavorite) {
-                            MaterialTheme.colorScheme.errorContainer
-                        } else {
-                            MaterialTheme.colorScheme.primaryContainer
-                        }
-                    ),
-                contentAlignment = Alignment.CenterStart
+    Box(modifier = modifier) {
+        // Background with star button (revealed on left side of row = right side of screen)
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .width(REVEAL_WIDTH)
+                .fillMaxHeight()
+                .background(
+                    if (exercise.isFavorite) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    }
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            IconButton(
+                onClick = {
+                    onToggleFavorite()
+                    onRevealChange(false) // Close after action
+                },
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = if (exercise.isFavorite) {
-                        Icons.Outlined.Star
-                    } else {
                         Icons.Filled.Star
+                    } else {
+                        Icons.Outlined.Star
                     },
                     contentDescription = if (exercise.isFavorite) {
                         "Remove from favorites"
                     } else {
                         "Add to favorites"
                     },
-                    modifier = Modifier.padding(start = 24.dp),
                     tint = if (exercise.isFavorite) {
-                        MaterialTheme.colorScheme.onErrorContainer
+                        MaterialTheme.colorScheme.primary
                     } else {
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    }
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    },
+                    modifier = Modifier.size(28.dp)
                 )
             }
-        },
-        modifier = modifier
-    ) {
-        ExerciseRowContent(
-            exercise = exercise,
-            thumbnailUrl = thumbnailUrl,
-            isLoadingThumbnail = isLoadingThumbnail,
-            onClick = onSelect,
-            onThumbnailClick = onThumbnailClick
-        )
+        }
+
+        // Foreground content (slides left to reveal button)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset { IntOffset((animatedOffset + dragOffset).roundToInt(), 0) }
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            dragOffset = 0f
+                        },
+                        onDragEnd = {
+                            // Determine if we should reveal or hide
+                            val totalOffset = (if (isRevealed) -revealWidthPx else 0f) + dragOffset
+
+                            if (isRevealed) {
+                                // Currently revealed - close if dragged right past threshold
+                                if (dragOffset > thresholdPx) {
+                                    onRevealChange(false)
+                                }
+                            } else {
+                                // Currently closed - open if dragged left past threshold
+                                if (dragOffset < -thresholdPx) {
+                                    onRevealChange(true)
+                                }
+                            }
+                            dragOffset = 0f
+                        },
+                        onDragCancel = {
+                            dragOffset = 0f
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            val newOffset = dragOffset + dragAmount
+                            // Clamp: don't drag right of start, don't drag left past reveal width
+                            val minOffset = if (isRevealed) 0f else -revealWidthPx
+                            val maxOffset = if (isRevealed) revealWidthPx else 0f
+                            dragOffset = newOffset.coerceIn(minOffset, maxOffset)
+                        }
+                    )
+                }
+        ) {
+            ExerciseRowContent(
+                exercise = exercise,
+                thumbnailUrl = thumbnailUrl,
+                isLoadingThumbnail = isLoadingThumbnail,
+                onClick = {
+                    if (isRevealed) {
+                        onRevealChange(false) // Close if tapping while revealed
+                    } else {
+                        onSelect()
+                    }
+                },
+                onThumbnailClick = onThumbnailClick
+            )
+        }
     }
 }
