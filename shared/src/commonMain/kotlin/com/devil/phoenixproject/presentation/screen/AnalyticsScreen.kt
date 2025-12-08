@@ -33,7 +33,6 @@ import com.devil.phoenixproject.util.KmpUtils
 import com.devil.phoenixproject.data.repository.ExerciseRepository
 import com.devil.phoenixproject.domain.model.PersonalRecord
 import androidx.compose.foundation.lazy.items
-import com.devil.phoenixproject.ui.theme.screenBackgroundBrush
 
 // Helper function for timestamp formatting
 private fun formatTimestamp(timestamp: Long): String {
@@ -364,12 +363,10 @@ fun AnalyticsScreen(
         // Update occurs when user swipes
     }
 
-    val backgroundGradient = screenBackgroundBrush()
-
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundGradient)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         Column(
             modifier = Modifier
