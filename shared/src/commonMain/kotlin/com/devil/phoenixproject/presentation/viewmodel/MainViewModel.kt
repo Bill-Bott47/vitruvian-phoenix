@@ -8,7 +8,7 @@ import com.devil.phoenixproject.data.repository.AutoStopUiState
 import com.devil.phoenixproject.data.repository.BleRepository
 import com.devil.phoenixproject.data.repository.ExerciseRepository
 import com.devil.phoenixproject.data.repository.GamificationRepository
-import com.devil.phoenixproject.data.repository.HandleActivityState
+import com.devil.phoenixproject.data.repository.HandleState
 import com.devil.phoenixproject.data.repository.PersonalRecordRepository
 import com.devil.phoenixproject.data.repository.RepNotification
 import com.devil.phoenixproject.data.repository.ScannedDevice
@@ -382,7 +382,7 @@ class MainViewModel constructor(
     private var autoStopStartTime: Long? = null
     private var autoStopTriggered = false
     private var autoStopStopRequested = false
-    private var currentHandleState: HandleActivityState = HandleActivityState.WaitingForRest
+    private var currentHandleState: HandleState = HandleState.WaitingForRest
 
     // Velocity-based stall detection state (Issue #204, #214)
     private var stallStartTime: Long? = null
@@ -443,25 +443,25 @@ class MainViewModel constructor(
         // Uses 4-state machine from BLE repo (matches parent repo v0.5.1-beta):
         // WaitingForRest -> SetComplete (armed) -> Moving (intermediate) -> Active (grabbed with velocity)
         viewModelScope.launch {
-            bleRepository.handleActivityState.collect { activityState ->
+            bleRepository.handleState.collect { activityState ->
                 val params = _workoutParameters.value
                 val currentState = _workoutState.value
                 val isIdle = currentState is WorkoutState.Idle
                 val isSummaryAndJustLift = currentState is WorkoutState.SetSummary && params.isJustLift
 
-                // Auto-start logic: when handles transition to Active state
-                // Active = position > 8mm AND velocity > 100mm/s (matches parent repo)
+                // Auto-start logic: when handles transition to Grabbed state
+                // Grabbed = position > 8mm AND velocity > 100mm/s (matches parent repo)
                 if (params.useAutoStart && (isIdle || isSummaryAndJustLift)) {
                     when (activityState) {
-                        HandleActivityState.Active -> {
+                        HandleState.Grabbed -> {
                             startAutoStartTimer()
                         }
-                        HandleActivityState.Moving -> {
+                        HandleState.Moving -> {
                             // Moving = position extended but no velocity yet
                             // Don't start countdown yet, but also don't cancel if already running
                             // This allows user to slowly pick up handles without false trigger
                         }
-                        HandleActivityState.SetComplete, HandleActivityState.WaitingForRest -> {
+                        HandleState.Released, HandleState.WaitingForRest -> {
                             cancelAutoStartTimer()
                         }
                     }

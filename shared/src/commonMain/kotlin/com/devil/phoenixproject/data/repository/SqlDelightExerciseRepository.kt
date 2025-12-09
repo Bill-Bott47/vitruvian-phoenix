@@ -23,15 +23,29 @@ class SqlDelightExerciseRepository(
     private val queries = db.vitruvianDatabaseQueries
 
     // Mapper function to convert database entity to Domain Model
+    // Parameters match the column order in the Exercise table
     private fun mapToExercise(
         id: String,
         name: String,
+        description: String?,
+        created: Long,
         muscleGroup: String,
         muscleGroups: String,
+        muscles: String?,
         equipment: String,
-        defaultCableConfig: String,
+        movement: String?,
+        sidedness: String?,
+        grip: String?,
+        gripWidth: String?,
+        minRepRange: Double?,
+        popularity: Double,
+        archived: Long,
         isFavorite: Long,
-        isCustom: Long
+        isCustom: Long,
+        timesPerformed: Long,
+        lastPerformed: Long?,
+        aliases: String?,
+        defaultCableConfig: String
     ): Exercise {
         return Exercise(
             id = id,
@@ -45,7 +59,8 @@ class SqlDelightExerciseRepository(
                 CableConfiguration.DOUBLE
             },
             isFavorite = isFavorite == 1L,
-            isCustom = isCustom == 1L
+            isCustom = isCustom == 1L,
+            timesPerformed = timesPerformed.toInt()
         )
     }
 
@@ -175,12 +190,25 @@ class SqlDelightExerciseRepository(
                 queries.insertExercise(
                     id = customId,
                     name = exercise.name,
+                    description = null, // Custom exercises start without description
+                    created = currentTimeMillis(),
                     muscleGroup = exercise.muscleGroup,
                     muscleGroups = exercise.muscleGroups,
+                    muscles = null,
                     equipment = exercise.equipment,
-                    defaultCableConfig = exercise.defaultCableConfig.name,
+                    movement = null,
+                    sidedness = null,
+                    grip = null,
+                    gripWidth = null,
+                    minRepRange = null,
+                    popularity = 0.0,
+                    archived = 0L,
                     isFavorite = if (exercise.isFavorite) 1L else 0L,
-                    isCustom = 1L // Always mark as custom
+                    isCustom = 1L, // Always mark as custom
+                    timesPerformed = 0L,
+                    lastPerformed = null,
+                    aliases = null,
+                    defaultCableConfig = exercise.defaultCableConfig.name
                 )
 
                 Logger.d { "Created custom exercise: ${exercise.name} with ID: $customId" }
@@ -211,9 +239,17 @@ class SqlDelightExerciseRepository(
 
                 queries.updateCustomExercise(
                     name = exercise.name,
+                    description = null, // Custom exercise description (not in domain model yet)
                     muscleGroup = exercise.muscleGroup,
                     muscleGroups = exercise.muscleGroups,
+                    muscles = null,
                     equipment = exercise.equipment,
+                    movement = null,
+                    sidedness = null,
+                    grip = null,
+                    gripWidth = null,
+                    minRepRange = null,
+                    aliases = null,
                     defaultCableConfig = exercise.defaultCableConfig.name,
                     id = exerciseId
                 )

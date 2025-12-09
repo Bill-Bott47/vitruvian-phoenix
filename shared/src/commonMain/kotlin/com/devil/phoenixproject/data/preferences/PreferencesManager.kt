@@ -14,6 +14,7 @@ data class UserPreferences(
     val autoplayEnabled: Boolean = true,
     val stopAtTop: Boolean = false,
     val enableVideoPlayback: Boolean = true,
+    val beepsEnabled: Boolean = true,
     val colorScheme: Int = 0
 )
 
@@ -87,13 +88,16 @@ interface PreferencesManager {
     suspend fun setAutoplayEnabled(enabled: Boolean)
     suspend fun setStopAtTop(enabled: Boolean)
     suspend fun setEnableVideoPlayback(enabled: Boolean)
+    suspend fun setBeepsEnabled(enabled: Boolean)
     suspend fun setColorScheme(scheme: Int)
 
     suspend fun getSingleExerciseDefaults(exerciseId: String, cableConfig: String): SingleExerciseDefaults?
     suspend fun saveSingleExerciseDefaults(defaults: SingleExerciseDefaults)
+    suspend fun clearAllSingleExerciseDefaults()
 
     suspend fun getJustLiftDefaults(): JustLiftDefaults
     suspend fun saveJustLiftDefaults(defaults: JustLiftDefaults)
+    suspend fun clearJustLiftDefaults()
 }
 
 /**
@@ -119,13 +123,19 @@ class StubPreferencesManager : PreferencesManager {
         _preferencesFlow.value = _preferencesFlow.value.copy(enableVideoPlayback = enabled)
     }
 
+    override suspend fun setBeepsEnabled(enabled: Boolean) {
+        _preferencesFlow.value = _preferencesFlow.value.copy(beepsEnabled = enabled)
+    }
+
     override suspend fun setColorScheme(scheme: Int) {
         _preferencesFlow.value = _preferencesFlow.value.copy(colorScheme = scheme)
     }
 
     override suspend fun getSingleExerciseDefaults(exerciseId: String, cableConfig: String): SingleExerciseDefaults? = null
     override suspend fun saveSingleExerciseDefaults(defaults: SingleExerciseDefaults) {}
+    override suspend fun clearAllSingleExerciseDefaults() {}
 
     override suspend fun getJustLiftDefaults() = JustLiftDefaults()
     override suspend fun saveJustLiftDefaults(defaults: JustLiftDefaults) {}
+    override suspend fun clearJustLiftDefaults() {}
 }

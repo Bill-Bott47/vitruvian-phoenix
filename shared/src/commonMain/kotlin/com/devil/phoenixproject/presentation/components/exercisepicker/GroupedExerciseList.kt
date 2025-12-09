@@ -57,15 +57,17 @@ fun GroupedExerciseList(
         return
     }
 
-    val groupedExercises = remember(exercises) {
+    val groupedExercises: Map<Char, List<Exercise>> = remember(exercises) {
         exercises
-            .groupBy { it.name.first().uppercaseChar() }
-            .toSortedMap()
+            .groupBy { exercise: Exercise -> exercise.name.first().uppercaseChar() }
+            .toList()
+            .sortedBy { it.first }
+            .toMap()
     }
 
-    val sectionIndices = remember(groupedExercises) {
+    val sectionIndices: Map<Char, Int> = remember(groupedExercises) {
         var index = 0
-        groupedExercises.mapValues { (_, list) ->
+        groupedExercises.mapValues { (_, list: List<Exercise>) ->
             val sectionIndex = index
             index += 1 + list.size // header + items
             sectionIndex
@@ -77,15 +79,15 @@ fun GroupedExerciseList(
             state = listState,
             modifier = Modifier.fillMaxSize()
         ) {
-            groupedExercises.forEach { (letter, exerciseList) ->
+            groupedExercises.forEach { (letter: Char, exerciseList: List<Exercise>) ->
                 stickyHeader(key = "header_$letter") {
                     LetterHeader(letter = letter.toString())
                 }
 
                 items(
                     items = exerciseList,
-                    key = { it.id ?: it.name }
-                ) { exercise ->
+                    key = { exercise: Exercise -> exercise.id ?: exercise.name }
+                ) { exercise: Exercise ->
                     ExerciseItemWithVideo(
                         exercise = exercise,
                         exerciseRepository = exerciseRepository,

@@ -129,16 +129,39 @@ class ExerciseImporter(
                         val muscleGroupsStr = exerciseJson.muscleGroups?.joinToString(",") ?: ""
                         val equipmentStr = exerciseJson.equipment?.joinToString(",") ?: ""
 
-                        // Insert exercise
+                        // Parse archived status (date string → boolean)
+                        val isArchived = exerciseJson.archived != null
+
+                        // Parse min rep range from JSON range object
+                        val minRepRange = exerciseJson.range?.minimum?.toDouble()
+
+                        // Join muscles and aliases
+                        val musclesStr = exerciseJson.muscles?.joinToString(",")
+                        val aliasesStr = exerciseJson.aliases?.joinToString(",")
+
+                        // Insert exercise with all columns
                         queries.insertExercise(
                             id = exerciseJson.id,
                             name = exerciseJson.name,
+                            description = exerciseJson.description,
+                            created = 0L, // Will be set from JSON created field if needed
                             muscleGroup = primaryMuscle,
                             muscleGroups = muscleGroupsStr,
+                            muscles = musclesStr,
                             equipment = equipmentStr,
-                            defaultCableConfig = cableConfig,
+                            movement = exerciseJson.movement,
+                            sidedness = exerciseJson.sidedness,
+                            grip = exerciseJson.grip,
+                            gripWidth = exerciseJson.gripWidth,
+                            minRepRange = minRepRange,
+                            popularity = exerciseJson.popularity ?: 0.0,
+                            archived = if (isArchived) 1L else 0L,
                             isFavorite = 0L,
-                            isCustom = 0L
+                            isCustom = 0L,
+                            timesPerformed = 0L,
+                            lastPerformed = null,
+                            aliases = aliasesStr,
+                            defaultCableConfig = cableConfig
                         )
                         importedCount++
 

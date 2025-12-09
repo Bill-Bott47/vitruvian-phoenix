@@ -15,6 +15,7 @@ import com.devil.phoenixproject.domain.model.RoutineExercise
 import com.devil.phoenixproject.domain.model.WorkoutSession
 import com.devil.phoenixproject.domain.model.WorkoutType
 import com.devil.phoenixproject.domain.model.currentTimeMillis
+import com.devil.phoenixproject.domain.model.generateUUID
 import com.devil.phoenixproject.data.local.WeeklyProgramWithDays
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -55,7 +56,11 @@ class SqlDelightWorkoutRepository(
         exerciseId: String?,
         exerciseName: String?,
         routineSessionId: String?,
-        routineName: String?
+        routineName: String?,
+        safetyFlags: Long,
+        deloadWarningCount: Long,
+        romViolationCount: Long,
+        spotterActivations: Long
     ): WorkoutSession {
         return WorkoutSession(
             id = id,
@@ -75,47 +80,69 @@ class SqlDelightWorkoutRepository(
             exerciseId = exerciseId,
             exerciseName = exerciseName,
             routineSessionId = routineSessionId,
-            routineName = routineName
+            routineName = routineName,
+            safetyFlags = safetyFlags.toInt(),
+            deloadWarningCount = deloadWarningCount.toInt(),
+            romViolationCount = romViolationCount.toInt(),
+            spotterActivations = spotterActivations.toInt()
         )
     }
 
     private fun mapToRoutineBasic(
-        id: Long,
+        id: String,
         name: String,
+        description: String,
         createdAt: Long,
-        updatedAt: Long
+        lastUsed: Long?,
+        useCount: Long
     ): Routine {
         return Routine(
-            id = id.toString(),
+            id = id,
             name = name,
             exercises = emptyList(),
             createdAt = createdAt,
-            lastUsed = null,
-            useCount = 0
+            lastUsed = lastUsed,
+            useCount = useCount.toInt()
         )
     }
 
-    private suspend fun loadRoutineWithExercises(routineId: Long, name: String, createdAt: Long): Routine {
+    private suspend fun loadRoutineWithExercises(routineId: String, name: String, createdAt: Long, lastUsed: Long? = null, useCount: Int = 0): Routine {
         val exerciseRows = queries.selectExercisesByRoutine(routineId).executeAsList()
         val exercises = exerciseRows.mapNotNull { row ->
             try {
-                val exercise = exerciseRepository.getExerciseById(row.exerciseId) ?: return@mapNotNull null
+                // Try to get exercise from library, or create from stored data
+                val exercise = row.exerciseId?.let { exerciseRepository.getExerciseById(it) }
+                    ?: Exercise(
+                        id = row.exerciseId,
+                        name = row.exerciseName,
+                        muscleGroup = row.exerciseMuscleGroup,
+                        muscleGroups = row.exerciseMuscleGroup,
+                        equipment = row.exerciseEquipment,
+                        defaultCableConfig = try {
+                            CableConfiguration.valueOf(row.exerciseDefaultCableConfig)
+                        } catch (e: Exception) {
+                            CableConfiguration.DOUBLE
+                        },
+                        isFavorite = false,
+                        isCustom = false
+                    )
 
-                // Parse JSON fields
+                // Parse comma-separated setReps
                 val setReps: List<Int?> = try {
-                    json.decodeFromString<List<Int?>>(row.setRepsJson)
+                    row.setReps.split(",").map { it.trim().toIntOrNull() }
                 } catch (e: Exception) {
-                    listOf(row.targetReps.toInt())
+                    listOf(10)
                 }
 
                 val setWeights: List<Float> = try {
-                    json.decodeFromString<List<Float>>(row.setWeightsJson)
+                    if (row.setWeights.isBlank()) emptyList()
+                    else row.setWeights.split(",").mapNotNull { it.trim().toFloatOrNull() }
                 } catch (e: Exception) {
                     emptyList()
                 }
 
                 val setRestSeconds: List<Int> = try {
-                    json.decodeFromString<List<Int>>(row.setRestSecondsJson)
+                    json.decodeFromString<List<Int>>(row.setRestSeconds)
                 } catch (e: Exception) {
                     emptyList()
                 }
@@ -132,12 +159,12 @@ class SqlDelightWorkoutRepository(
                 val workoutType = parseWorkoutType(row.mode, eccentricLoad, echoLevel)
 
                 RoutineExercise(
-                    id = row.id.toString(),
+                    id = row.id,
                     exercise = exercise,
                     cableConfig = cableConfig,
                     orderIndex = row.orderIndex.toInt(),
                     setReps = setReps,
-                    weightPerCableKg = row.targetWeight.toFloat(),
+                    weightPerCableKg = row.weightPerCableKg.toFloat(),
                     setWeightsPerCableKg = setWeights,
                     workoutType = workoutType,
                     eccentricLoad = eccentricLoad,
@@ -158,12 +185,12 @@ class SqlDelightWorkoutRepository(
         }
 
         return Routine(
-            id = routineId.toString(),
+            id = routineId,
             name = name,
             exercises = exercises,
             createdAt = createdAt,
-            lastUsed = null,
-            useCount = 0
+            lastUsed = lastUsed,
+            useCount = useCount
         )
     }
 
@@ -230,7 +257,11 @@ class SqlDelightWorkoutRepository(
                 exerciseId = session.exerciseId,
                 exerciseName = session.exerciseName,
                 routineSessionId = session.routineSessionId,
-                routineName = session.routineName
+                routineName = session.routineName,
+                safetyFlags = session.safetyFlags.toLong(),
+                deloadWarningCount = session.deloadWarningCount.toLong(),
+                romViolationCount = session.romViolationCount.toLong(),
+                spotterActivations = session.spotterActivations.toLong()
             )
         }
     }
@@ -256,9 +287,11 @@ class SqlDelightWorkoutRepository(
                 basicRoutines.map { routine ->
                     try {
                         loadRoutineWithExercises(
-                            routine.id.toLong(),
+                            routine.id,
                             routine.name,
-                            routine.createdAt
+                            routine.createdAt,
+                            routine.lastUsed,
+                            routine.useCount
                         )
                     } catch (e: Exception) {
                         Logger.e(e) { "Failed to load exercises for routine ${routine.id}" }
@@ -271,16 +304,18 @@ class SqlDelightWorkoutRepository(
     override suspend fun saveRoutine(routine: Routine) {
         withContext(Dispatchers.IO) {
             val now = currentTimeMillis()
+            // Generate a UUID for the routine if not provided
+            val routineId = routine.id.takeIf { it.isNotBlank() } ?: generateUUID()
 
             // Insert the routine
             queries.insertRoutine(
+                id = routineId,
                 name = routine.name,
+                description = "", // Default empty description
                 createdAt = routine.createdAt,
-                updatedAt = now
+                lastUsed = routine.lastUsed,
+                useCount = routine.useCount.toLong()
             )
-
-            // Get the inserted routine ID
-            val routineId = queries.getLastInsertedRoutineId().executeAsOne()
 
             // Insert all exercises
             routine.exercises.forEachIndexed { index, exercise ->
@@ -291,26 +326,32 @@ class SqlDelightWorkoutRepository(
         }
     }
 
-    private fun insertRoutineExercise(routineId: Long, exercise: RoutineExercise, index: Int) {
+    private fun insertRoutineExercise(routineId: String, exercise: RoutineExercise, index: Int) {
+        // Generate a UUID for the exercise if not provided
+        val exerciseRowId = exercise.id.takeIf { it.isNotBlank() } ?: generateUUID()
+
         queries.insertRoutineExercise(
+            id = exerciseRowId,
             routineId = routineId,
-            exerciseId = exercise.exercise.id ?: exercise.exercise.name.replace(" ", "_").lowercase(),
             exerciseName = exercise.exercise.name,
-            orderIndex = index.toLong(),
-            targetWeight = exercise.weightPerCableKg.toDouble(),
-            targetReps = exercise.reps.toLong(),
-            targetSets = exercise.sets.toLong(),
-            mode = serializeWorkoutType(exercise.workoutType),
+            exerciseMuscleGroup = exercise.exercise.muscleGroup,
+            exerciseEquipment = exercise.exercise.equipment,
+            exerciseDefaultCableConfig = exercise.exercise.defaultCableConfig.name,
+            exerciseId = exercise.exercise.id,
             cableConfig = exercise.cableConfig.name,
-            setRepsJson = json.encodeToString(exercise.setReps),
-            setWeightsJson = json.encodeToString(exercise.setWeightsPerCableKg),
-            setRestSecondsJson = json.encodeToString(exercise.setRestSeconds),
+            orderIndex = index.toLong(),
+            setReps = exercise.setReps.joinToString(",") { (it ?: 10).toString() },
+            weightPerCableKg = exercise.weightPerCableKg.toDouble(),
+            setWeights = exercise.setWeightsPerCableKg.joinToString(","),
+            mode = serializeWorkoutType(exercise.workoutType),
             eccentricLoad = exercise.eccentricLoad.percentage.toLong(),
             echoLevel = exercise.echoLevel.ordinal.toLong(),
             progressionKg = exercise.progressionKg.toDouble(),
+            restSeconds = exercise.setRestSeconds.firstOrNull()?.toLong() ?: 60L,
             duration = exercise.duration?.toLong(),
-            isAMRAP = if (exercise.isAMRAP) 1L else 0L,
+            setRestSeconds = json.encodeToString(exercise.setRestSeconds),
             perSetRestTime = if (exercise.perSetRestTime) 1L else 0L,
+            isAMRAP = if (exercise.isAMRAP) 1L else 0L,
             supersetGroupId = exercise.supersetGroupId,
             supersetOrder = exercise.supersetOrder.toLong(),
             supersetRestSeconds = exercise.supersetRestSeconds.toLong()
@@ -319,13 +360,12 @@ class SqlDelightWorkoutRepository(
 
     override suspend fun updateRoutine(routine: Routine) {
         withContext(Dispatchers.IO) {
-            val routineId = routine.id.toLongOrNull() ?: return@withContext
-            val now = currentTimeMillis()
+            val routineId = routine.id.takeIf { it.isNotBlank() } ?: return@withContext
 
             // Update the routine
             queries.updateRoutineById(
                 name = routine.name,
-                updatedAt = now,
+                description = "", // Keep description empty for now
                 id = routineId
             )
 
@@ -343,11 +383,11 @@ class SqlDelightWorkoutRepository(
 
     override suspend fun deleteRoutine(routineId: String) {
         withContext(Dispatchers.IO) {
-            val idLong = routineId.toLongOrNull() ?: return@withContext
+            if (routineId.isBlank()) return@withContext
 
             // Delete exercises first (foreign key cascade should handle this, but be explicit)
-            queries.deleteRoutineExercises(idLong)
-            queries.deleteRoutineById(idLong)
+            queries.deleteRoutineExercises(routineId)
+            queries.deleteRoutineById(routineId)
 
             Logger.d { "Deleted routine $routineId" }
         }
@@ -355,11 +395,17 @@ class SqlDelightWorkoutRepository(
 
     override suspend fun getRoutineById(routineId: String): Routine? {
         return withContext(Dispatchers.IO) {
-            val idLong = routineId.toLongOrNull() ?: return@withContext null
-            val basicRoutine = queries.selectRoutineById(idLong, ::mapToRoutineBasic).executeAsOneOrNull()
+            if (routineId.isBlank()) return@withContext null
+            val basicRoutine = queries.selectRoutineById(routineId, ::mapToRoutineBasic).executeAsOneOrNull()
                 ?: return@withContext null
 
-            loadRoutineWithExercises(idLong, basicRoutine.name, basicRoutine.createdAt)
+            loadRoutineWithExercises(
+                routineId,
+                basicRoutine.name,
+                basicRoutine.createdAt,
+                basicRoutine.lastUsed,
+                basicRoutine.useCount
+            )
         }
     }
 
@@ -396,7 +442,7 @@ class SqlDelightWorkoutRepository(
     }
 
     override fun getAllPersonalRecords(): Flow<List<PersonalRecordEntity>> {
-        return queries.selectAllRecords { id, exerciseId, exerciseName, weight, reps, oneRepMax, achievedAt, workoutMode ->
+        return queries.selectAllRecords { id, exerciseId, exerciseName, weight, reps, oneRepMax, achievedAt, workoutMode, prType, volume ->
             PersonalRecordEntity(
                 id = id,
                 exerciseId = exerciseId,
@@ -416,7 +462,127 @@ class SqlDelightWorkoutRepository(
         sessionId: String,
         metrics: List<com.devil.phoenixproject.domain.model.WorkoutMetric>
     ) {
-        // TODO: Add MetricSample table queries when schema is extended
-        // For now, metrics are not persisted
+        withContext(Dispatchers.IO) {
+            metrics.forEach { metric ->
+                // Calculate power: P = F × v (force × velocity)
+                val power = metric.loadA * metric.velocityA.toFloat()
+                queries.insertMetric(
+                    sessionId = sessionId,
+                    timestamp = metric.timestamp,
+                    position = metric.positionA.toDouble(),
+                    velocity = metric.velocityA,
+                    load = metric.loadA.toDouble(),
+                    power = power.toDouble(),
+                    status = metric.status.toLong()
+                )
+            }
+        }
+    }
+
+    // ========== New methods for full parity ==========
+
+    override fun getRecentSessions(limit: Int): Flow<List<WorkoutSession>> {
+        return queries.selectRecentSessions(limit.toLong(), ::mapToSession)
+            .asFlow()
+            .mapToList(Dispatchers.IO)
+    }
+
+    override suspend fun getSession(sessionId: String): WorkoutSession? {
+        return withContext(Dispatchers.IO) {
+            queries.selectSessionById(sessionId, ::mapToSession).executeAsOneOrNull()
+        }
+    }
+
+    override suspend fun markRoutineUsed(routineId: String) {
+        withContext(Dispatchers.IO) {
+            if (routineId.isBlank()) return@withContext
+            queries.updateRoutineLastUsed(currentTimeMillis(), routineId)
+            Logger.d { "Marked routine used: $routineId" }
+        }
+    }
+
+    override fun getMetricsForSession(sessionId: String): Flow<List<com.devil.phoenixproject.domain.model.WorkoutMetric>> {
+        return queries.selectMetricsBySession(sessionId) { id, sessId, timestamp, position, velocity, load, power, status ->
+            com.devil.phoenixproject.domain.model.WorkoutMetric(
+                timestamp = timestamp,
+                loadA = load?.toFloat() ?: 0f,
+                loadB = load?.toFloat() ?: 0f,
+                positionA = position?.toFloat() ?: 0f,
+                positionB = position?.toFloat() ?: 0f,
+                velocityA = velocity ?: 0.0,
+                velocityB = velocity ?: 0.0,
+                status = status?.toInt() ?: 0
+            )
+        }.asFlow().mapToList(Dispatchers.IO)
+    }
+
+    override suspend fun getMetricsForSessionSync(sessionId: String): List<com.devil.phoenixproject.domain.model.WorkoutMetric> {
+        return withContext(Dispatchers.IO) {
+            queries.selectMetricsBySession(sessionId) { id, sessId, timestamp, position, velocity, load, power, status ->
+                com.devil.phoenixproject.domain.model.WorkoutMetric(
+                    timestamp = timestamp,
+                    loadA = load?.toFloat() ?: 0f,
+                    loadB = load?.toFloat() ?: 0f,
+                    positionA = position?.toFloat() ?: 0f,
+                    positionB = position?.toFloat() ?: 0f,
+                    velocityA = velocity ?: 0.0,
+                    velocityB = velocity ?: 0.0,
+                    status = status?.toInt() ?: 0
+                )
+            }.executeAsList()
+        }
+    }
+
+    override suspend fun getRecentSessionsSync(limit: Int): List<WorkoutSession> {
+        return withContext(Dispatchers.IO) {
+            queries.selectRecentSessions(limit.toLong(), ::mapToSession).executeAsList()
+        }
+    }
+
+    override suspend fun savePhaseStatistics(
+        sessionId: String,
+        stats: com.devil.phoenixproject.domain.model.HeuristicStatistics
+    ) {
+        withContext(Dispatchers.IO) {
+            queries.insertPhaseStatistics(
+                sessionId = sessionId,
+                concentricKgAvg = stats.concentric.kgAvg.toDouble(),
+                concentricKgMax = stats.concentric.kgMax.toDouble(),
+                concentricVelAvg = stats.concentric.velAvg.toDouble(),
+                concentricVelMax = stats.concentric.velMax.toDouble(),
+                concentricWattAvg = stats.concentric.wattAvg.toDouble(),
+                concentricWattMax = stats.concentric.wattMax.toDouble(),
+                eccentricKgAvg = stats.eccentric.kgAvg.toDouble(),
+                eccentricKgMax = stats.eccentric.kgMax.toDouble(),
+                eccentricVelAvg = stats.eccentric.velAvg.toDouble(),
+                eccentricVelMax = stats.eccentric.velMax.toDouble(),
+                eccentricWattAvg = stats.eccentric.wattAvg.toDouble(),
+                eccentricWattMax = stats.eccentric.wattMax.toDouble(),
+                timestamp = stats.timestamp
+            )
+            Logger.d { "Saved phase statistics for session $sessionId" }
+        }
+    }
+
+    override fun getAllPhaseStatistics(): Flow<List<PhaseStatisticsData>> {
+        return queries.selectAllPhaseStats { id, sessionId, concentricKgAvg, concentricKgMax, concentricVelAvg, concentricVelMax, concentricWattAvg, concentricWattMax, eccentricKgAvg, eccentricKgMax, eccentricVelAvg, eccentricVelMax, eccentricWattAvg, eccentricWattMax, timestamp ->
+            PhaseStatisticsData(
+                id = id,
+                sessionId = sessionId,
+                concentricKgAvg = concentricKgAvg.toFloat(),
+                concentricKgMax = concentricKgMax.toFloat(),
+                concentricVelAvg = concentricVelAvg.toFloat(),
+                concentricVelMax = concentricVelMax.toFloat(),
+                concentricWattAvg = concentricWattAvg.toFloat(),
+                concentricWattMax = concentricWattMax.toFloat(),
+                eccentricKgAvg = eccentricKgAvg.toFloat(),
+                eccentricKgMax = eccentricKgMax.toFloat(),
+                eccentricVelAvg = eccentricVelAvg.toFloat(),
+                eccentricVelMax = eccentricVelMax.toFloat(),
+                eccentricWattAvg = eccentricWattAvg.toFloat(),
+                eccentricWattMax = eccentricWattMax.toFloat(),
+                timestamp = timestamp
+            )
+        }.asFlow().mapToList(Dispatchers.IO)
     }
 }

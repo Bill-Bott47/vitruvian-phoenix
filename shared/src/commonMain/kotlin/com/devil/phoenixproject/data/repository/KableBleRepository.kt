@@ -34,8 +34,12 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 import com.devil.phoenixproject.data.ble.requestHighPriority
+import com.devil.phoenixproject.data.ble.requestMtuIfSupported
 
 import com.devil.phoenixproject.util.HardwareDetection
+import com.devil.phoenixproject.domain.model.HeuristicStatistics
+import com.devil.phoenixproject.domain.model.HeuristicPhaseStatistics
+import com.devil.phoenixproject.domain.model.WorkoutParameters
 import kotlin.concurrent.Volatile
 
 /**
@@ -182,8 +186,8 @@ class KableBleRepository : BleRepository {
     private val _scannedDevices = MutableStateFlow<List<ScannedDevice>>(emptyList())
     override val scannedDevices: StateFlow<List<ScannedDevice>> = _scannedDevices.asStateFlow()
 
-    private val _handleState = MutableStateFlow(HandleState())
-    override val handleState: StateFlow<HandleState> = _handleState.asStateFlow()
+    private val _handleDetection = MutableStateFlow(HandleDetection())
+    override val handleDetection: StateFlow<HandleDetection> = _handleDetection.asStateFlow()
 
     // Monitor data flow - CRITICAL: Need buffer for high-frequency emissions!
     // Matching parent repo: extraBufferCapacity=64 for ~640ms of data at 10ms/sample
@@ -202,9 +206,9 @@ class KableBleRepository : BleRepository {
     )
     override val repEvents: Flow<RepNotification> = _repEvents.asSharedFlow()
 
-    // Handle activity state (4-state machine for Just Lift mode)
-    private val _handleActivityState = MutableStateFlow(HandleActivityState.WaitingForRest)
-    override val handleActivityState: StateFlow<HandleActivityState> = _handleActivityState.asStateFlow()
+    // Handle state (4-state machine for Just Lift mode)
+    private val _handleState = MutableStateFlow(HandleState.WaitingForRest)
+    override val handleState: StateFlow<HandleState> = _handleState.asStateFlow()
 
     // Deload event flow (for Just Lift safety recovery)
     private val _deloadOccurredEvents = MutableSharedFlow<Unit>(
@@ -221,6 +225,10 @@ class KableBleRepository : BleRepository {
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     override val reconnectionRequested: Flow<ReconnectionRequest> = _reconnectionRequested.asSharedFlow()
+
+    // Heuristic/phase statistics from machine (for Echo mode force feedback)
+    private val _heuristicData = MutableStateFlow<HeuristicStatistics?>(null)
+    override val heuristicData: StateFlow<HeuristicStatistics?> = _heuristicData.asStateFlow()
 
     // Command response flow (for awaitResponse() protocol handshake)
     private val _commandResponses = MutableSharedFlow<UByte>(
@@ -289,6 +297,9 @@ class KableBleRepository : BleRepository {
     // Detected firmware version (from DIS or proprietary characteristic)
     private var detectedFirmwareVersion: String? = null
 
+    // Negotiated MTU (for diagnostic logging)
+    @Volatile private var negotiatedMtu: Int? = null
+
     // Strict validation flag (filters >20mm position jumps)
     private var strictValidationEnabled = true
 
@@ -300,112 +311,120 @@ class KableBleRepository : BleRepository {
     // when a Peripheral is first created (before connect() is even called)
     private var wasEverConnected = false
 
-    override suspend fun startScanning() {
+    override suspend fun startScanning(): Result<Unit> {
         log.i { "Starting BLE scan for Vitruvian devices" }
         logRepo.info(LogEventType.SCAN_START, "Starting BLE scan for Vitruvian devices")
 
-        _scannedDevices.value = emptyList()
-        discoveredAdvertisements.clear()
-        _connectionState.value = ConnectionState.Scanning
+        return try {
+            _scannedDevices.value = emptyList()
+            discoveredAdvertisements.clear()
+            _connectionState.value = ConnectionState.Scanning
 
-        scanJob = Scanner {
-            // No specific filters - we'll filter manually
-        }
-            .advertisements
-            .onEach { advertisement ->
-                // Debug logging for all advertisements
-                log.d { "RAW ADV: name=${advertisement.name}, id=${advertisement.identifier}, uuids=${advertisement.uuids}, rssi=${advertisement.rssi}" }
+            scanJob = Scanner {
+                // No specific filters - we'll filter manually
             }
-            .filter { advertisement ->
-                // Filter by name if available
-                val name = advertisement.name
-                if (name != null) {
-                    val isVitruvian = name.startsWith("Vee_") || name.startsWith("VIT")
-                    if (isVitruvian) {
-                        log.i { "Found Vitruvian by name: $name" }
+                .advertisements
+                .onEach { advertisement ->
+                    // Debug logging for all advertisements
+                    log.d { "RAW ADV: name=${advertisement.name}, id=${advertisement.identifier}, uuids=${advertisement.uuids}, rssi=${advertisement.rssi}" }
+                }
+                .filter { advertisement ->
+                    // Filter by name if available
+                    val name = advertisement.name
+                    if (name != null) {
+                        val isVitruvian = name.startsWith("Vee_") || name.startsWith("VIT")
+                        if (isVitruvian) {
+                            log.i { "Found Vitruvian by name: $name" }
+                        }
+                        return@filter isVitruvian
                     }
-                    return@filter isVitruvian
-                }
 
-                // Check for Vitruvian service UUIDs (mServiceUuids)
-                val serviceUuids = advertisement.uuids
-                val hasVitruvianServiceUuid = serviceUuids.any { uuid ->
-                    val uuidStr = uuid.toString().lowercase()
-                    uuidStr.startsWith("0000fef3") ||
-                    uuidStr == "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
-                }
+                    // Check for Vitruvian service UUIDs (mServiceUuids)
+                    val serviceUuids = advertisement.uuids
+                    val hasVitruvianServiceUuid = serviceUuids.any { uuid ->
+                        val uuidStr = uuid.toString().lowercase()
+                        uuidStr.startsWith("0000fef3") ||
+                        uuidStr == "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+                    }
 
-                if (hasVitruvianServiceUuid) {
-                    log.i { "Found Vitruvian by service UUID: ${advertisement.identifier}" }
-                    return@filter true
-                }
+                    if (hasVitruvianServiceUuid) {
+                        log.i { "Found Vitruvian by service UUID: ${advertisement.identifier}" }
+                        return@filter true
+                    }
 
-                // CRITICAL: Check for FEF3 service data
-                // The Vitruvian device advertises FEF3 in serviceData, not serviceUuids!
-                // In Kable, serviceData is accessed differently - try to get FEF3 directly
-                val fef3Uuid = try {
-                    Uuid.parse("0000fef3-0000-1000-8000-00805f9b34fb")
-                } catch (_: Exception) {
-                    null
-                }
+                    // CRITICAL: Check for FEF3 service data
+                    // The Vitruvian device advertises FEF3 in serviceData, not serviceUuids!
+                    // In Kable, serviceData is accessed differently - try to get FEF3 directly
+                    val fef3Uuid = try {
+                        Uuid.parse("0000fef3-0000-1000-8000-00805f9b34fb")
+                    } catch (_: Exception) {
+                        null
+                    }
 
-                val hasVitruvianServiceData = if (fef3Uuid != null) {
-                    // Try to get data for FEF3 service UUID
-                    val fef3Data = advertisement.serviceData(fef3Uuid)
-                    if (fef3Data != null && fef3Data.isNotEmpty()) {
-                        log.i { "Found Vitruvian by FEF3 serviceData: ${advertisement.identifier}, data size: ${fef3Data.size}" }
-                        true
+                    val hasVitruvianServiceData = if (fef3Uuid != null) {
+                        // Try to get data for FEF3 service UUID
+                        val fef3Data = advertisement.serviceData(fef3Uuid)
+                        if (fef3Data != null && fef3Data.isNotEmpty()) {
+                            log.i { "Found Vitruvian by FEF3 serviceData: ${advertisement.identifier}, data size: ${fef3Data.size}" }
+                            true
+                        } else {
+                            false
+                        }
                     } else {
                         false
                     }
-                } else {
-                    false
+
+                    hasVitruvianServiceData
                 }
+                .onEach { advertisement ->
+                    val identifier = advertisement.identifier.toString()
+                    // Use name if available, otherwise use identifier as placeholder
+                    val name = advertisement.name ?: "Vitruvian ($identifier)"
 
-                hasVitruvianServiceData
-            }
-            .onEach { advertisement ->
-                val identifier = advertisement.identifier.toString()
-                // Use name if available, otherwise use identifier as placeholder
-                val name = advertisement.name ?: "Vitruvian ($identifier)"
+                    // Only log if this is a new device
+                    if (!discoveredAdvertisements.containsKey(identifier)) {
+                        log.d { "Discovered device: $name ($identifier) RSSI: ${advertisement.rssi}" }
+                        logRepo.info(
+                            LogEventType.DEVICE_FOUND,
+                            "Found Vitruvian device",
+                            name,
+                            identifier,
+                            "RSSI: ${advertisement.rssi} dBm"
+                        )
+                    }
 
-                // Only log if this is a new device
-                if (!discoveredAdvertisements.containsKey(identifier)) {
-                    log.d { "Discovered device: $name ($identifier) RSSI: ${advertisement.rssi}" }
-                    logRepo.info(
-                        LogEventType.DEVICE_FOUND,
-                        "Found Vitruvian device",
-                        name,
-                        identifier,
-                        "RSSI: ${advertisement.rssi} dBm"
+                    // Store advertisement reference
+                    discoveredAdvertisements[identifier] = advertisement
+
+                    // Update scanned devices list
+                    val device = ScannedDevice(
+                        name = name,
+                        address = identifier,
+                        rssi = advertisement.rssi
                     )
+                    val currentDevices = _scannedDevices.value.toMutableList()
+                    val existingIndex = currentDevices.indexOfFirst { it.address == identifier }
+                    if (existingIndex >= 0) {
+                        currentDevices[existingIndex] = device
+                    } else {
+                        currentDevices.add(device)
+                    }
+                    _scannedDevices.value = currentDevices.sortedByDescending { it.rssi }
                 }
-
-                // Store advertisement reference
-                discoveredAdvertisements[identifier] = advertisement
-
-                // Update scanned devices list
-                val device = ScannedDevice(
-                    name = name,
-                    address = identifier,
-                    rssi = advertisement.rssi
-                )
-                val currentDevices = _scannedDevices.value.toMutableList()
-                val existingIndex = currentDevices.indexOfFirst { it.address == identifier }
-                if (existingIndex >= 0) {
-                    currentDevices[existingIndex] = device
-                } else {
-                    currentDevices.add(device)
+                .catch { e ->
+                    log.e { "Scan error: ${e.message}" }
+                    logRepo.error(LogEventType.ERROR, "BLE scan failed", details = e.message)
+                    // Return to Disconnected instead of Error for scan failures - user can retry
+                    _connectionState.value = ConnectionState.Disconnected
                 }
-                _scannedDevices.value = currentDevices.sortedByDescending { it.rssi }
-            }
-            .catch { e ->
-                log.e { "Scan error: ${e.message}" }
-                logRepo.error(LogEventType.ERROR, "BLE scan failed", details = e.message)
-                // Return to Disconnected instead of Error for scan failures - user can retry
-                _connectionState.value = ConnectionState.Disconnected
-            }
-            .launchIn(scope)
+                .launchIn(scope)
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            log.e { "Failed to start scanning: ${e.message}" }
+            _connectionState.value = ConnectionState.Disconnected
+            Result.failure(e)
+        }
     }
 
     override suspend fun stopScanning() {
@@ -422,7 +441,7 @@ class KableBleRepository : BleRepository {
         }
     }
 
-    override suspend fun connect(device: ScannedDevice) {
+    override suspend fun connect(device: ScannedDevice): Result<Unit> {
         log.i { "Connecting to device: ${device.name}" }
         logRepo.info(
             LogEventType.CONNECT_START,
@@ -443,18 +462,20 @@ class KableBleRepository : BleRepository {
             )
             // Return to Disconnected - device may have gone out of range, user can retry
             _connectionState.value = ConnectionState.Disconnected
-            return
+            return Result.failure(IllegalStateException("Device not found in scanned list"))
         }
 
         // Store device info for logging
         connectedDeviceName = device.name
         connectedDeviceAddress = device.address
 
-        try {
+        return try {
             stopScanning()
 
-            // Create peripheral - MTU request is handled in onDeviceReady() via platform-specific extension
-            // The onServicesDiscovered callback in Kable doesn't have requestMtu in common code
+            // Create peripheral
+            // Note: MTU negotiation is handled in onDeviceReady() via expect/actual
+            // pattern (requestMtuIfSupported) since Kable's requestMtu requires
+            // platform-specific AndroidPeripheral cast
             peripheral = Peripheral(advertisement)
 
             // Observe connection state
@@ -553,7 +574,7 @@ class KableBleRepository : BleRepository {
                     log.d { "Connection attempt $attempt of $CONNECTION_RETRY_COUNT" }
                     peripheral?.connect()
                     log.i { "Connection initiated to ${device.name}" }
-                    return // Success, exit retry loop
+                    return Result.success(Unit) // Success, exit retry loop
                 } catch (e: Exception) {
                     lastException = e
                     log.w { "Connection attempt $attempt failed: ${e.message}" }
@@ -580,6 +601,7 @@ class KableBleRepository : BleRepository {
             peripheral = null
             connectedDeviceName = ""
             connectedDeviceAddress = ""
+            Result.failure(e)
         }
     }
 
@@ -594,18 +616,60 @@ class KableBleRepository : BleRepository {
         // Critical for maintaining ~20Hz polling rate without lag
         p.requestHighPriority()
 
-        // Request MTU - Kable handles MTU negotiation automatically
-        logRepo.debug(LogEventType.MTU_CHANGED, "Requesting MTU $DESIRED_MTU")
+        // Request MTU negotiation (Android only - iOS handles automatically)
+        // CRITICAL: Without MTU negotiation, BLE uses default 23-byte MTU (20 usable)
+        // Vitruvian commands require up to 96 bytes for activation frames
+        val mtu = p.requestMtuIfSupported(DESIRED_MTU)
+        if (mtu != null) {
+            negotiatedMtu = mtu
+            log.i { "✅ MTU negotiated: $mtu bytes (requested: $DESIRED_MTU)" }
+            logRepo.info(
+                LogEventType.MTU_CHANGED,
+                "MTU negotiated: $mtu bytes",
+                connectedDeviceName,
+                connectedDeviceAddress
+            )
+        } else {
+            // iOS returns null (handled by OS), or Android negotiation failed
+            log.i { "ℹ️ MTU negotiation: using system default (iOS) or failed (Android)" }
+            logRepo.debug(
+                LogEventType.MTU_CHANGED,
+                "MTU using system default"
+            )
+        }
 
-        // Dump discovered services for debugging
+        // Verify services are discovered and log GATT structure
         try {
-            log.i { "📋 Attempting to enumerate discovered services..." }
-            // Note: Kable's services property returns List<DiscoveredService>?
-            // We'll log what we can to understand the device's GATT structure
-            val servicesStr = p.services.toString()
-            log.i { "📋 Services: $servicesStr" }
+            val services = p.services
+            if (services == null) {
+                log.w { "⚠️ No services discovered - device may not be fully ready" }
+                logRepo.warning(
+                    LogEventType.SERVICE_DISCOVERED,
+                    "No services found after connection",
+                    connectedDeviceName,
+                    connectedDeviceAddress
+                )
+            } else {
+                // Log discovered services (Kable returns lazy sequence, convert to string for logging)
+                val servicesStr = services.toString()
+                log.i { "📋 Services discovered: $servicesStr" }
+                logRepo.info(
+                    LogEventType.SERVICE_DISCOVERED,
+                    "GATT services discovered",
+                    connectedDeviceName,
+                    connectedDeviceAddress,
+                    servicesStr.take(200) // Truncate for log storage
+                )
+            }
         } catch (e: Exception) {
             log.e { "Failed to enumerate services: ${e.message}" }
+            logRepo.warning(
+                LogEventType.SERVICE_DISCOVERED,
+                "Failed to access services",
+                connectedDeviceName,
+                connectedDeviceAddress,
+                e.message
+            )
         }
 
         logRepo.info(
@@ -958,18 +1022,41 @@ class KableBleRepository : BleRepository {
 
     /**
      * Parse heuristic data from HEURISTIC characteristic.
-     * Contains concentric/eccentric phase statistics.
+     * Contains concentric/eccentric phase statistics (48 bytes, Little Endian).
+     * Format: 6 floats for concentric stats, 6 floats for eccentric stats
      */
     private fun parseHeuristicData(bytes: ByteArray) {
         try {
             if (bytes.size < 48) return
 
             // Parse 6 floats for concentric stats (24 bytes)
-            // Parse 6 floats for eccentric stats (24 bytes)
             // Format: kgAvg, kgMax, velAvg, velMax, wattAvg, wattMax
+            val concentric = HeuristicPhaseStatistics(
+                kgAvg = getFloatLE(bytes, 0),
+                kgMax = getFloatLE(bytes, 4),
+                velAvg = getFloatLE(bytes, 8),
+                velMax = getFloatLE(bytes, 12),
+                wattAvg = getFloatLE(bytes, 16),
+                wattMax = getFloatLE(bytes, 20)
+            )
 
-            // Could expose this as a flow if UI needs phase statistics
-            // For now, the polling maintains BLE connection activity
+            // Parse 6 floats for eccentric stats (24 bytes)
+            val eccentric = HeuristicPhaseStatistics(
+                kgAvg = getFloatLE(bytes, 24),
+                kgMax = getFloatLE(bytes, 28),
+                velAvg = getFloatLE(bytes, 32),
+                velMax = getFloatLE(bytes, 36),
+                wattAvg = getFloatLE(bytes, 40),
+                wattMax = getFloatLE(bytes, 44)
+            )
+
+            val stats = HeuristicStatistics(
+                concentric = concentric,
+                eccentric = eccentric,
+                timestamp = currentTimeMillis()
+            )
+
+            _heuristicData.value = stats
         } catch (e: Exception) {
             log.v { "Failed to parse heuristic data: ${e.message}" }
         }
@@ -1001,7 +1088,7 @@ class KableBleRepository : BleRepository {
             // AUTO-START MODE: Initialize handle state machine
             // Start in WaitingForRest state - must see handles at rest (low position) before arming grab detection
             // This prevents immediate auto-start if cables already have tension
-            _handleActivityState.value = HandleActivityState.WaitingForRest
+            _handleState.value = HandleState.WaitingForRest
             forceAboveGrabThresholdStart = null
             forceBelowReleaseThresholdStart = null
             handleDetectionEnabled = true
@@ -1009,7 +1096,7 @@ class KableBleRepository : BleRepository {
         } else {
             // ACTIVE WORKOUT MODE: Skip state machine initialization, set to Active
             // Workout is already running, no need for grab detection
-            _handleActivityState.value = HandleActivityState.Active
+            _handleState.value = HandleState.Grabbed
             handleDetectionEnabled = false
             log.i { "🏋️ Monitor polling for ACTIVE WORKOUT (handle detection disabled)" }
         }
@@ -1100,12 +1187,31 @@ class KableBleRepository : BleRepository {
         _connectionState.value = ConnectionState.Disconnected
     }
 
-    override suspend fun setColorScheme(schemeIndex: Int) {
-        log.d { "Setting color scheme: $schemeIndex" }
-        // Color scheme command - implementation depends on machine protocol
+    override suspend fun cancelConnection() {
+        log.i { "Cancelling in-progress connection" }
+        isExplicitDisconnect = true  // Prevent auto-reconnect
+        try {
+            peripheral?.disconnect()
+        } catch (e: Exception) {
+            log.e { "Cancel connection error: ${e.message}" }
+        }
+        peripheral = null
+        _connectionState.value = ConnectionState.Disconnected
     }
 
-    override suspend fun sendWorkoutCommand(command: ByteArray) {
+    override suspend fun setColorScheme(schemeIndex: Int): Result<Unit> {
+        log.d { "Setting color scheme: $schemeIndex" }
+        return try {
+            // Color scheme command - send via workout command characteristic
+            val command = byteArrayOf(0x10, schemeIndex.toByte(), 0x00, 0x00)
+            sendWorkoutCommand(command)
+        } catch (e: Exception) {
+            log.e { "Failed to set color scheme: ${e.message}" }
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun sendWorkoutCommand(command: ByteArray): Result<Unit> {
         val p = peripheral
         if (p == null) {
             log.w { "Not connected - cannot send command" }
@@ -1113,7 +1219,7 @@ class KableBleRepository : BleRepository {
                 LogEventType.ERROR,
                 "Cannot send command - not connected"
             )
-            return
+            return Result.failure(IllegalStateException("Not connected"))
         }
 
         val commandHex = command.joinToString(" ") { it.toHexString() }
@@ -1135,7 +1241,7 @@ class KableBleRepository : BleRepository {
                     connectedDeviceAddress,
                     "Size: ${command.size} bytes"
                 )
-                return
+                return Result.success(Unit)
             } catch (e: Exception) {
                 log.w { "Cached workout char failed, will try fan-out: ${e.message}" }
                 workingWorkoutCmdCharacteristic = null  // Clear cache
@@ -1155,7 +1261,7 @@ class KableBleRepository : BleRepository {
                     connectedDeviceAddress,
                     "Size: ${command.size} bytes"
                 )
-                return
+                return Result.success(Unit)
             } catch (e: Exception) {
                 log.v { "Workout cmd char #$index failed: ${e.message}" }
                 // Continue to next characteristic
@@ -1164,7 +1270,7 @@ class KableBleRepository : BleRepository {
 
         // Step 3: Fall back to NUS TX characteristic (original method)
         log.d { "All workout chars failed, falling back to NUS TX" }
-        try {
+        return try {
             // Try WriteWithResponse first (some devices don't support WithoutResponse)
             try {
                 p.write(txCharacteristic, command, WriteType.WithResponse)
@@ -1181,6 +1287,7 @@ class KableBleRepository : BleRepository {
                 connectedDeviceAddress,
                 "Size: ${command.size} bytes, Data: $commandHex"
             )
+            Result.success(Unit)
         } catch (e: Exception) {
             log.e { "Failed to send command (all methods): ${e.message}" }
             logRepo.error(
@@ -1190,6 +1297,92 @@ class KableBleRepository : BleRepository {
                 connectedDeviceAddress,
                 e.message
             )
+            Result.failure(e)
+        }
+    }
+
+    // ===== HIGH-LEVEL WORKOUT CONTROL (parity with parent repo) =====
+
+    override suspend fun sendInitSequence(): Result<Unit> {
+        log.i { "Sending initialization sequence" }
+        return try {
+            // Send initialization commands to prepare machine for workout
+            // Based on parent repo protocol analysis
+            val initCmd = byteArrayOf(0x01, 0x00, 0x00, 0x00)  // Init command
+            sendWorkoutCommand(initCmd)
+        } catch (e: Exception) {
+            log.e { "Failed to send init sequence: ${e.message}" }
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun startWorkout(params: WorkoutParameters): Result<Unit> {
+        log.i { "Starting workout with params: type=${params.workoutType}, weight=${params.weightPerCableKg}kg" }
+        return try {
+            // Build workout start command based on parameters
+            // Format matches parent repo protocol
+            val modeCode = params.workoutType.modeValue.toByte()
+            val weightBytes = (params.weightPerCableKg * 100).toInt()  // Weight in hectograms
+            val weightLow = (weightBytes and 0xFF).toByte()
+            val weightHigh = ((weightBytes shr 8) and 0xFF).toByte()
+
+            val startCmd = byteArrayOf(0x02, modeCode, weightLow, weightHigh)
+            val result = sendWorkoutCommand(startCmd)
+
+            if (result.isSuccess) {
+                // Start active workout polling (not auto-start)
+                startActiveWorkoutPolling()
+            }
+
+            result
+        } catch (e: Exception) {
+            log.e { "Failed to start workout: ${e.message}" }
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun stopWorkout(): Result<Unit> {
+        log.i { "Stopping workout" }
+        return try {
+            // Send stop command AND stop polling
+            val result = sendStopCommand()
+
+            // Stop all polling when workout ends
+            stopPolling()
+
+            result
+        } catch (e: Exception) {
+            log.e { "Failed to stop workout: ${e.message}" }
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun sendStopCommand(): Result<Unit> {
+        log.i { "Sending stop command (polling continues)" }
+        return try {
+            // Send stop command to machine WITHOUT stopping polling
+            // This allows Just Lift mode to continue monitoring for auto-start
+            val stopCmd = byteArrayOf(0x03, 0x00, 0x00, 0x00)  // Stop command
+            sendWorkoutCommand(stopCmd)
+        } catch (e: Exception) {
+            log.e { "Failed to send stop command: ${e.message}" }
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun testOfficialAppProtocol(): Result<Unit> {
+        log.i { "Testing official app protocol" }
+        return try {
+            // Send a test command to verify protocol compatibility
+            val testCmd = byteArrayOf(0x00, 0x00, 0x00, 0x00)  // No-op/test command
+            val result = sendWorkoutCommand(testCmd)
+            if (result.isSuccess) {
+                log.i { "Official app protocol test successful" }
+            }
+            result
+        } catch (e: Exception) {
+            log.e { "Official app protocol test failed: ${e.message}" }
+            Result.failure(e)
         }
     }
 
@@ -1203,7 +1396,7 @@ class KableBleRepository : BleRepository {
             } else {
                 // No peripheral connected, just set the state for when it connects
                 handleDetectionEnabled = true
-                _handleActivityState.value = HandleActivityState.WaitingForRest
+                _handleState.value = HandleState.WaitingForRest
                 handleStateLogCounter = 0L
                 minPositionSeen = Double.MAX_VALUE
                 maxPositionSeen = Double.MIN_VALUE
@@ -1218,9 +1411,9 @@ class KableBleRepository : BleRepository {
         }
     }
 
-    override fun resetHandleActivityState() {
+    override fun resetHandleState() {
         log.d { "Resetting handle activity state to WaitingForRest" }
-        _handleActivityState.value = HandleActivityState.WaitingForRest
+        _handleState.value = HandleState.WaitingForRest
         minPositionSeen = Double.MAX_VALUE
         maxPositionSeen = Double.MIN_VALUE
         forceAboveGrabThresholdStart = null
@@ -1243,7 +1436,7 @@ class KableBleRepository : BleRepository {
         handleStateLogCounter = 0L
 
         // Start in WaitingForRest state - must see handles at rest before arming grab detection
-        _handleActivityState.value = HandleActivityState.WaitingForRest
+        _handleState.value = HandleState.WaitingForRest
 
         // Enable handle detection for the state machine
         handleDetectionEnabled = true
@@ -1500,16 +1693,16 @@ class KableBleRepository : BleRepository {
                 val activeThreshold = 50.0f  // 50mm threshold (was 500 raw units / 10 = 50mm)
                 val leftDetected = posA > activeThreshold
                 val rightDetected = posB > activeThreshold
-                val currentState = _handleState.value
-                if (currentState.leftDetected != leftDetected || currentState.rightDetected != rightDetected) {
-                    _handleState.value = HandleState(leftDetected, rightDetected)
+                val currentDetection = _handleDetection.value
+                if (currentDetection.leftDetected != leftDetected || currentDetection.rightDetected != rightDetected) {
+                    _handleDetection.value = HandleDetection(leftDetected, rightDetected)
                 }
 
                 // ===== 4-STATE HANDLE STATE MACHINE (for Just Lift mode) =====
-                val newActivityState = analyzeHandleActivityState(metric)
-                if (newActivityState != _handleActivityState.value) {
-                    log.d { "Handle activity state changed: ${_handleActivityState.value} -> $newActivityState" }
-                    _handleActivityState.value = newActivityState
+                val newActivityState = analyzeHandleState(metric)
+                if (newActivityState != _handleState.value) {
+                    log.d { "Handle activity state changed: ${_handleState.value} -> $newActivityState" }
+                    _handleState.value = newActivityState
                 }
             }
 
@@ -1598,7 +1791,7 @@ class KableBleRepository : BleRepository {
      * - SetComplete/Moving → SetComplete: When position <= 8mm (back to rest)
      * - Active → SetComplete: When both handles < 5mm (RELEASE DETECTED)
      */
-    private fun analyzeHandleActivityState(metric: WorkoutMetric): HandleActivityState {
+    private fun analyzeHandleState(metric: WorkoutMetric): HandleState {
         val posA = metric.positionA.toDouble()
         val posB = metric.positionB.toDouble()
         val velocityA = metric.velocityA
@@ -1608,7 +1801,7 @@ class KableBleRepository : BleRepository {
         minPositionSeen = minOf(minPositionSeen, minOf(posA, posB))
         maxPositionSeen = maxOf(maxPositionSeen, maxOf(posA, posB))
 
-        val currentState = _handleActivityState.value
+        val currentState = _handleState.value
 
         // Check handles - support single-handle exercises
         val handleAGrabbed = posA > HANDLE_GRABBED_THRESHOLD
@@ -1623,18 +1816,18 @@ class KableBleRepository : BleRepository {
         }
 
         return when (currentState) {
-            HandleActivityState.WaitingForRest -> {
+            HandleState.WaitingForRest -> {
                 // MUST see handles at rest before arming grab detection
                 // This prevents immediate auto-start if cables already have tension
                 if (posA < HANDLE_REST_THRESHOLD && posB < HANDLE_REST_THRESHOLD) {
                     log.i { "✅ Handles at REST (posA=$posA, posB=$posB < $HANDLE_REST_THRESHOLD) - auto-start now ARMED" }
-                    HandleActivityState.SetComplete  // SetComplete = "Released/Armed" state
+                    HandleState.Released  // SetComplete = "Released/Armed" state
                 } else {
-                    HandleActivityState.WaitingForRest
+                    HandleState.WaitingForRest
                 }
             }
 
-            HandleActivityState.SetComplete, HandleActivityState.Moving -> {
+            HandleState.Released, HandleState.Moving -> {
                 // Check if EITHER handle is grabbed AND moving (for single-handle exercises)
                 val aActive = handleAGrabbed && handleAMoving
                 val bActive = handleBGrabbed && handleBMoving
@@ -1648,20 +1841,20 @@ class KableBleRepository : BleRepository {
                             else -> "B"
                         }
                         log.i { "🔥 GRAB CONFIRMED: handle=$activeHandle (posA=${posA.format(1)}, posB=${posB.format(1)}, velA=${velocityA.format(0)}, velB=${velocityB.format(0)})" }
-                        HandleActivityState.Active
+                        HandleState.Grabbed
                     }
                     handleAGrabbed || handleBGrabbed -> {
                         // Position extended but no significant movement yet
-                        HandleActivityState.Moving
+                        HandleState.Moving
                     }
                     else -> {
                         // Back to rest position
-                        HandleActivityState.SetComplete
+                        HandleState.Released
                     }
                 }
             }
 
-            HandleActivityState.Active -> {
+            HandleState.Grabbed -> {
                 // Consider released only if BOTH handles are at rest
                 // This prevents false release during single-handle exercises
                 val aReleased = posA < HANDLE_REST_THRESHOLD
@@ -1669,9 +1862,9 @@ class KableBleRepository : BleRepository {
 
                 if (aReleased && bReleased) {
                     log.d { "RELEASE DETECTED: posA=$posA, posB=$posB < $HANDLE_REST_THRESHOLD" }
-                    HandleActivityState.SetComplete
+                    HandleState.Released
                 } else {
-                    HandleActivityState.Active
+                    HandleState.Grabbed
                 }
             }
         }
@@ -1722,16 +1915,16 @@ class KableBleRepository : BleRepository {
                 val activeThreshold = 50.0f  // 50mm threshold (was 500 raw / 10)
                 val leftDetected = positionA > activeThreshold
                 val rightDetected = positionB > activeThreshold
-                val currentState = _handleState.value
-                if (currentState.leftDetected != leftDetected || currentState.rightDetected != rightDetected) {
-                    _handleState.value = HandleState(leftDetected, rightDetected)
+                val currentDetection = _handleDetection.value
+                if (currentDetection.leftDetected != leftDetected || currentDetection.rightDetected != rightDetected) {
+                    _handleDetection.value = HandleDetection(leftDetected, rightDetected)
                 }
 
-                // Also analyze handle activity state for Just Lift mode
-                val newActivityState = analyzeHandleActivityState(metric)
-                if (newActivityState != _handleActivityState.value) {
-                    log.d { "Handle activity state changed (RX): ${_handleActivityState.value} -> $newActivityState" }
-                    _handleActivityState.value = newActivityState
+                // Also analyze handle state for Just Lift mode
+                val newActivityState = analyzeHandleState(metric)
+                if (newActivityState != _handleState.value) {
+                    log.d { "Handle activity state changed (RX): ${_handleState.value} -> $newActivityState" }
+                    _handleState.value = newActivityState
                 }
             }
         } catch (e: Exception) {
@@ -1777,8 +1970,9 @@ class KableBleRepository : BleRepository {
                     repsSetCount = repsSetCount,
                     rangeTop = rangeTop,
                     rangeBottom = rangeBottom,
-                    isLegacyFormat = false,
-                    timestamp = currentTime
+                    rawData = data,
+                    timestamp = currentTime,
+                    isLegacyFormat = false
                 )
             } else {
                 // LEGACY 6-byte packet (Beta 4 format, Samsung devices) - parse u16 counters
@@ -1797,8 +1991,9 @@ class KableBleRepository : BleRepository {
                     repsSetCount = 0,  // Not available in legacy format
                     rangeTop = 0f,
                     rangeBottom = 0f,
-                    isLegacyFormat = true,
-                    timestamp = currentTime
+                    rawData = data,
+                    timestamp = currentTime,
+                    isLegacyFormat = true
                 )
             }
 
@@ -1864,8 +2059,9 @@ class KableBleRepository : BleRepository {
                     repsSetCount = repsSetCount,
                     rangeTop = rangeTop,
                     rangeBottom = rangeBottom,
-                    isLegacyFormat = false,
-                    timestamp = currentTime
+                    rawData = data,
+                    timestamp = currentTime,
+                    isLegacyFormat = false
                 )
             } else {
                 // LEGACY 6-byte packet (data starts at offset 0)
@@ -1882,8 +2078,9 @@ class KableBleRepository : BleRepository {
                     repsSetCount = 0,
                     rangeTop = 0f,
                     rangeBottom = 0f,
-                    isLegacyFormat = true,
-                    timestamp = currentTime
+                    rawData = data,
+                    timestamp = currentTime,
+                    isLegacyFormat = true
                 )
             }
 

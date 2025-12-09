@@ -16,9 +16,9 @@ data class ScannedDevice(
 )
 
 /**
- * Handle detection state
+ * Handle detection state (left/right cable detection)
  */
-data class HandleState(
+data class HandleDetection(
     val leftDetected: Boolean = false,
     val rightDetected: Boolean = false
 )
@@ -33,24 +33,24 @@ data class AutoStopUiState(
 )
 
 /**
- * Handle activity state for auto-start/auto-stop logic.
+ * Handle state for auto-start/auto-stop logic.
  * Tracks the workout phase based on handle position.
  *
- * 4-state machine (matches parent repo v0.5.1-beta):
+ * 4-state machine (matches parent repo):
  * - WaitingForRest: Initial state, requires handles at rest before arming
- * - Released (SetComplete): Handles at rest, armed for grab detection
- * - Moving: Handles extended but no significant velocity yet (intermediate state)
- * - Grabbed (Active): Handles grabbed with velocity - workout active
+ * - Released: Handles at rest, armed for grab detection
+ * - Grabbed: Handles grabbed with velocity - workout active
+ * - Moving: Handles in motion
  */
-enum class HandleActivityState {
-    /** Waiting for user to pick up handles (at rest position) */
+enum class HandleState {
+    /** Initial state - waiting for handles to be at rest before arming grab detection */
     WaitingForRest,
-    /** Handles extended (position > threshold) but no significant velocity yet */
-    Moving,
-    /** Handles are lifted with velocity - user is actively working (maps to "Grabbed" in parent) */
-    Active,
-    /** Set completed / handles released, armed for next grab (maps to "Released" in parent) */
-    SetComplete
+    /** Handles at rest - armed for grab detection */
+    Released,
+    /** Handles grabbed - force > 3kg sustained */
+    Grabbed,
+    /** Handles in motion */
+    Moving
 }
 
 /**
@@ -83,9 +83,42 @@ data class RepNotification(
     val repsSetCount: Int,
     val rangeTop: Float = 0f,
     val rangeBottom: Float = 0f,
-    val isLegacyFormat: Boolean = false,
-    val timestamp: Long = 0L
-)
+    val rawData: ByteArray,
+    val timestamp: Long = 0L,
+    val isLegacyFormat: Boolean = false
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null || this::class != other::class) return false
+
+        other as RepNotification
+
+        if (topCounter != other.topCounter) return false
+        if (completeCounter != other.completeCounter) return false
+        if (repsRomCount != other.repsRomCount) return false
+        if (repsSetCount != other.repsSetCount) return false
+        if (rangeTop != other.rangeTop) return false
+        if (rangeBottom != other.rangeBottom) return false
+        if (!rawData.contentEquals(other.rawData)) return false
+        if (timestamp != other.timestamp) return false
+        if (isLegacyFormat != other.isLegacyFormat) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = topCounter
+        result = 31 * result + completeCounter
+        result = 31 * result + repsRomCount
+        result = 31 * result + repsSetCount
+        result = 31 * result + rangeTop.hashCode()
+        result = 31 * result + rangeBottom.hashCode()
+        result = 31 * result + rawData.contentHashCode()
+        result = 31 * result + timestamp.hashCode()
+        result = 31 * result + isLegacyFormat.hashCode()
+        return result
+    }
+}
 
 /**
  * Reconnection request data.
@@ -109,11 +142,11 @@ interface BleRepository {
     val connectionState: StateFlow<ConnectionState>
     val metricsFlow: Flow<WorkoutMetric>
     val scannedDevices: StateFlow<List<ScannedDevice>>
-    val handleState: StateFlow<HandleState>
+    val handleDetection: StateFlow<HandleDetection>
     val repEvents: Flow<RepNotification>
 
-    // Handle activity state (4-state machine for Just Lift auto-start)
-    val handleActivityState: StateFlow<HandleActivityState>
+    // Handle state (4-state machine for Just Lift auto-start)
+    val handleState: StateFlow<HandleState>
 
     // Deload safety event (for Just Lift mode safety recovery)
     val deloadOccurredEvents: Flow<Unit>
@@ -121,18 +154,38 @@ interface BleRepository {
     // Reconnection request (for auto-recovery on connection loss)
     val reconnectionRequested: Flow<ReconnectionRequest>
 
-    suspend fun startScanning()
+    // Heuristic/phase statistics from machine (for Echo mode force feedback)
+    val heuristicData: StateFlow<com.devil.phoenixproject.domain.model.HeuristicStatistics?>
+
+    suspend fun startScanning(): Result<Unit>
     suspend fun stopScanning()
-    suspend fun connect(device: ScannedDevice)
+    suspend fun connect(device: ScannedDevice): Result<Unit>
+    suspend fun cancelConnection()  // Cancel an in-progress connection attempt
     suspend fun disconnect()
-    suspend fun setColorScheme(schemeIndex: Int)
-    suspend fun sendWorkoutCommand(command: ByteArray)
+    suspend fun setColorScheme(schemeIndex: Int): Result<Unit>
+    suspend fun sendWorkoutCommand(command: ByteArray): Result<Unit>
+
+    // High-level workout control (parity with parent repo)
+    suspend fun sendInitSequence(): Result<Unit>
+    suspend fun startWorkout(params: com.devil.phoenixproject.domain.model.WorkoutParameters): Result<Unit>
+    suspend fun stopWorkout(): Result<Unit>
+
+    /**
+     * Send stop command to machine WITHOUT stopping polling.
+     * Use this for Just Lift mode where we need continuous polling for auto-start detection.
+     */
+    suspend fun sendStopCommand(): Result<Unit>
+
+    /**
+     * Test official app protocol (for debugging)
+     */
+    suspend fun testOfficialAppProtocol(): Result<Unit>
 
     // Handle detection for auto-start (arms the state machine in WaitingForRest)
     fun enableHandleDetection(enabled: Boolean)
 
     // Reset handle state machine to initial state (for re-arming Just Lift)
-    fun resetHandleActivityState()
+    fun resetHandleState()
 
     /**
      * Enable Just Lift waiting mode after set completion.
@@ -174,20 +227,27 @@ class StubBleRepository : BleRepository {
         WorkoutMetric(loadA = 0f, loadB = 0f, positionA = 0f, positionB = 0f)
     )
     override val scannedDevices = MutableStateFlow<List<ScannedDevice>>(emptyList())
-    override val handleState = MutableStateFlow(HandleState())
+    override val handleDetection = MutableStateFlow(HandleDetection())
     override val repEvents: Flow<RepNotification> = kotlinx.coroutines.flow.emptyFlow()
-    override val handleActivityState = MutableStateFlow(HandleActivityState.WaitingForRest)
+    override val handleState = MutableStateFlow(HandleState.WaitingForRest)
     override val deloadOccurredEvents: Flow<Unit> = kotlinx.coroutines.flow.emptyFlow()
     override val reconnectionRequested: Flow<ReconnectionRequest> = kotlinx.coroutines.flow.emptyFlow()
+    override val heuristicData = MutableStateFlow<com.devil.phoenixproject.domain.model.HeuristicStatistics?>(null)
 
-    override suspend fun startScanning() {}
+    override suspend fun startScanning() = Result.success(Unit)
     override suspend fun stopScanning() {}
-    override suspend fun connect(device: ScannedDevice) {}
+    override suspend fun connect(device: ScannedDevice) = Result.success(Unit)
+    override suspend fun cancelConnection() {}
     override suspend fun disconnect() {}
-    override suspend fun setColorScheme(schemeIndex: Int) {}
-    override suspend fun sendWorkoutCommand(command: ByteArray) {}
+    override suspend fun setColorScheme(schemeIndex: Int) = Result.success(Unit)
+    override suspend fun sendWorkoutCommand(command: ByteArray) = Result.success(Unit)
+    override suspend fun sendInitSequence() = Result.success(Unit)
+    override suspend fun startWorkout(params: com.devil.phoenixproject.domain.model.WorkoutParameters) = Result.success(Unit)
+    override suspend fun stopWorkout() = Result.success(Unit)
+    override suspend fun sendStopCommand() = Result.success(Unit)
+    override suspend fun testOfficialAppProtocol() = Result.success(Unit)
     override fun enableHandleDetection(enabled: Boolean) {}
-    override fun resetHandleActivityState() {}
+    override fun resetHandleState() {}
     override fun enableJustLiftWaitingMode() {}
     override fun restartMonitorPolling() {}
     override fun startActiveWorkoutPolling() {}

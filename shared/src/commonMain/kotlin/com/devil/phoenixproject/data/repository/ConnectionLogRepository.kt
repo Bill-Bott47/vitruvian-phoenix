@@ -52,16 +52,10 @@ class ConnectionLogRepository {
         /** Maximum number of logs to keep in memory */
         const val MAX_LOGS = 1000
 
-        /** Singleton instance */
-        private var _instance: ConnectionLogRepository? = null
-
-        val instance: ConnectionLogRepository
-            get() {
-                if (_instance == null) {
-                    _instance = ConnectionLogRepository()
-                }
-                return _instance!!
-            }
+        /** Thread-safe singleton instance using lazy initialization */
+        val instance: ConnectionLogRepository by lazy {
+            ConnectionLogRepository()
+        }
     }
 
     private var nextId = 1L
@@ -88,12 +82,13 @@ class ConnectionLogRepository {
         val entry = ConnectionLogEntity(
             id = nextId++,
             timestamp = currentTimeMillis(),
-            level = level.name,
             eventType = eventType,
-            message = message,
-            deviceName = deviceName,
+            level = level.name,
             deviceAddress = deviceAddress,
-            details = details
+            deviceName = deviceName,
+            message = message,
+            details = details,
+            metadata = null
         )
 
         _logs.update { currentLogs ->

@@ -28,3 +28,21 @@ actual suspend fun Peripheral.requestHighPriority() {
         Logger.w("BleExtensions") { "❌ Failed to request high connection priority: ${e.message}" }
     }
 }
+
+actual suspend fun Peripheral.requestMtuIfSupported(mtu: Int): Int? {
+    val androidPeripheral = this as? AndroidPeripheral
+    if (androidPeripheral == null) {
+        Logger.w("BleExtensions") { "⚠️ Cannot request MTU: not an AndroidPeripheral" }
+        return null
+    }
+
+    return try {
+        Logger.i("BleExtensions") { "🔧 Requesting MTU: $mtu bytes..." }
+        val negotiatedMtu = androidPeripheral.requestMtu(mtu)
+        Logger.i("BleExtensions") { "✅ MTU negotiated: $negotiatedMtu bytes (requested: $mtu)" }
+        negotiatedMtu
+    } catch (e: Exception) {
+        Logger.w("BleExtensions") { "❌ MTU negotiation failed: ${e.message}" }
+        null
+    }
+}
