@@ -592,17 +592,29 @@ class MainViewModel constructor(
             }
             Logger.d { "Built ${command.size}-byte workout command for ${params.workoutType}" }
 
-            // 2. Send Command
+            // 2. Send Configuration Command
             try {
                 bleRepository.sendWorkoutCommand(command)
-                Logger.d { "Workout command sent: $params" }
+                Logger.d { "Workout config sent: ${command.size} bytes for ${params.workoutType}" }
             } catch (e: Exception) {
-                Logger.e(e) { "Failed to send command" }
+                Logger.e(e) { "Failed to send config command" }
                 _connectionError.value = "Failed to send command: ${e.message}"
                 return@launch
             }
 
-            // 3. Reset State
+            // 3. Send START Command - This engages the machine!
+            // Protocol: Config (0x04/0x4E) sets parameters, START (0x03) activates them
+            try {
+                val startCommand = BlePacketFactory.createStartCommand()
+                bleRepository.sendWorkoutCommand(startCommand)
+                Logger.d { "START command sent (0x03) - machine engaged" }
+            } catch (e: Exception) {
+                Logger.e(e) { "Failed to send START command" }
+                _connectionError.value = "Failed to start workout: ${e.message}"
+                return@launch
+            }
+
+            // 4. Reset State
             currentSessionId = KmpUtils.randomUUID()
             _repCount.value = RepCount()
             // For Just Lift mode, preserve position ranges built during handle detection
@@ -620,7 +632,7 @@ class MainViewModel constructor(
                 isAMRAP = params.isAMRAP
             )
 
-            // 4. Countdown
+            // 5. Countdown (skipped for Just Lift auto-start)
             if (!skipCountdown && !isJustLiftMode) {
                 for (i in 5 downTo 1) {
                     _workoutState.value = WorkoutState.Countdown(i)
@@ -628,7 +640,7 @@ class MainViewModel constructor(
                 }
             }
 
-            // 5. Start Monitoring
+            // 6. Start Monitoring
             _workoutState.value = WorkoutState.Active
             workoutStartTime = currentTimeMillis()
             _hapticEvents.emit(HapticEvent.WORKOUT_START)
