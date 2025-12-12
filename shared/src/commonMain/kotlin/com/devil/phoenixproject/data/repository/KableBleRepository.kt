@@ -90,7 +90,7 @@ class KableBleRepository : BleRepository {
         // Handle detection thresholds (from parent repo - proven working)
         // Position values are in mm (raw / 10.0f), so thresholds are in mm
         private const val HANDLE_GRABBED_THRESHOLD = 8.0    // Position > 8.0mm = handles grabbed
-        private const val HANDLE_REST_THRESHOLD = 2.5       // Position < 2.5mm = handles at rest (matches Nordic spec)
+        private const val HANDLE_REST_THRESHOLD = 5.0       // Position < 5.0mm = handles at rest (Increased from 2.5 to handle drift - matches parent repo)
         // Velocity is in mm/s (calculated from mm positions)
         private const val VELOCITY_THRESHOLD = 50.0         // Velocity > 50 mm/s = significant movement (matches official concentric threshold)
 
@@ -1520,18 +1520,17 @@ class KableBleRepository : BleRepository {
             var posA = posARaw / 10.0f
             var posB = posBRaw / 10.0f
 
-            // ===== SPIKE FILTERING =====
-            // BLE transmission errors produce values > 5000mm (was > 50000 raw units)
+            // ===== POSITION VALIDATION (matching parent repo) =====
+            // Validate position range and use last good value if invalid
             // Per official app documentation, valid range is -1000 to +1000 mm
-            // Spike threshold is now 20f mm (was 200 raw units / 10 = 20mm)
-            val SPIKE_THRESHOLD_MM = 5000f  // Values > 5000mm are BLE errors
-            if (kotlin.math.abs(posA) > SPIKE_THRESHOLD_MM) {
+            if (posA !in MIN_POSITION.toFloat()..MAX_POSITION.toFloat()) {
+                log.w { "Position A out of range: $posA, using last good: $lastGoodPosA" }
                 posA = lastGoodPosA
             } else {
                 lastGoodPosA = posA
             }
-
-            if (kotlin.math.abs(posB) > SPIKE_THRESHOLD_MM) {
+            if (posB !in MIN_POSITION.toFloat()..MAX_POSITION.toFloat()) {
+                log.w { "Position B out of range: $posB, using last good: $lastGoodPosB" }
                 posB = lastGoodPosB
             } else {
                 lastGoodPosB = posB
@@ -1743,10 +1742,11 @@ class KableBleRepository : BleRepository {
         val currentState = _handleState.value
 
         // Check handles - support single-handle exercises
+        // NOTE: Use abs(velocity) since velocity is now signed (Issue #204 fix)
         val handleAGrabbed = posA > HANDLE_GRABBED_THRESHOLD
         val handleBGrabbed = posB > HANDLE_GRABBED_THRESHOLD
-        val handleAMoving = velocityA > VELOCITY_THRESHOLD
-        val handleBMoving = velocityB > VELOCITY_THRESHOLD
+        val handleAMoving = kotlin.math.abs(velocityA) > VELOCITY_THRESHOLD
+        val handleBMoving = kotlin.math.abs(velocityB) > VELOCITY_THRESHOLD
 
         // Periodic diagnostic logging (every 200 samples at high poll rate)
         handleStateLogCounter++

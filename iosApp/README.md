@@ -118,14 +118,28 @@ If you get "No such module 'shared'" error:
 - Test on a real device (Simulator doesn't support BLE)
 - Check that Bluetooth is enabled on the device
 
-### Koin Initialization
+### Koin Initialization and Migrations
 
-The app initializes Koin in `VitruvianPhoenixApp.init()`:
+The app initializes Koin and runs migrations in `VitruvianPhoenixApp.init()`:
 ```swift
 KoinKt.doInitKoin()
+KoinKt.runMigrations()
 ```
 
-This must be called before any Compose UI is rendered.
+This must be called before any Compose UI is rendered. Migrations run automatically on app startup, matching Android behavior.
+
+### BLE Permission Handling
+
+The app includes a BLE permission UI component (`RequireBlePermissions`) that:
+- Shows guidance screens before BLE is first used
+- Provides instructions for enabling permissions in Settings if denied
+- Matches Android's permission handling UX
+
+On iOS, CoreBluetooth automatically requests permission when BLE scanning starts, but the UI provides guidance beforehand.
+
+### Background Execution
+
+The app supports background BLE execution via `UIBackgroundModes` with `bluetooth-central` in `Info.plist`. This allows BLE connections to persist when the app is backgrounded, similar to Android's foreground service.
 
 ## Development Notes
 

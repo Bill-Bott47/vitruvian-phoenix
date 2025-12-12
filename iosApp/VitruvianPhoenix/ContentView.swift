@@ -5,6 +5,8 @@ import shared
 struct ContentView: View {
     var body: some View {
         ComposeView()
+            // Ignore safe area - Compose Multiplatform handles safe areas internally
+            // This allows the Compose UI to extend edge-to-edge like Android
             .ignoresSafeArea(.all)
     }
 }
@@ -16,7 +18,7 @@ struct ComposeView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
-        // No updates needed - Compose handles its own state
+        // No updates needed - Compose handles its own state and safe area insets
     }
 }
 

@@ -449,11 +449,12 @@ class MainViewModel constructor(
                 val isIdle = currentState is WorkoutState.Idle
                 val isSummaryAndJustLift = currentState is WorkoutState.SetSummary && params.isJustLift
 
-                // Auto-start logic: when handles transition to Grabbed state
-                // Grabbed = position > 8mm AND velocity > 100mm/s (matches parent repo)
+                // Handle auto-START when Idle and waiting for handles
+                // Also allow auto-start from SetSummary if in Just Lift mode (interrupting the summary)
                 if (params.useAutoStart && (isIdle || isSummaryAndJustLift)) {
                     when (activityState) {
                         HandleState.Grabbed -> {
+                            Logger.d("Handles grabbed! Starting auto-start timer (State: ${_workoutState.value})")
                             startAutoStartTimer()
                         }
                         HandleState.Moving -> {
@@ -461,9 +462,30 @@ class MainViewModel constructor(
                             // Don't start countdown yet, but also don't cancel if already running
                             // This allows user to slowly pick up handles without false trigger
                         }
-                        HandleState.Released, HandleState.WaitingForRest -> {
+                        HandleState.Released -> {
+                            Logger.d("Handles released! Canceling auto-start timer")
                             cancelAutoStartTimer()
                         }
+                        HandleState.WaitingForRest -> {
+                            cancelAutoStartTimer()
+                        }
+                    }
+                }
+
+                // Handle auto-STOP when Active in Just Lift mode and handles released
+                // This starts the countdown timer via checkAutoStop logic (triggered by handle state)
+                if (params.isJustLift && currentState is WorkoutState.Active) {
+                    if (activityState == HandleState.Released) {
+                        Logger.d("🛑 Just Lift: Handles RELEASED - starting auto-stop timer")
+                        // Do NOT trigger immediately. Let checkAutoStop handle the timer.
+                        // We ensure autoStopStartTime is set to start the countdown.
+                        if (autoStopStartTime == null) {
+                            autoStopStartTime = currentTimeMillis()
+                            Logger.d("🛑 Auto-stop timer STARTED (Just Lift) - handles released")
+                        }
+                    } else if (activityState == HandleState.Grabbed || activityState == HandleState.Moving) {
+                        // User resumed activity, reset auto-stop timer
+                        resetAutoStopTimer()
                     }
                 }
 
@@ -515,7 +537,14 @@ class MainViewModel constructor(
     }
 
     fun connectToDevice(deviceAddress: String) {
-        // Handled by ensureConnection mostly, but direct connect stub
+        viewModelScope.launch {
+            val device = scannedDevices.value.find { it.address == deviceAddress }
+            if (device != null) {
+                bleRepository.connect(device)
+            } else {
+                Logger.e { "Device not found in scanned devices: $deviceAddress" }
+            }
+        }
     }
 
     fun disconnect() {
@@ -807,48 +836,90 @@ class MainViewModel constructor(
         viewModelScope.launch { bleRepository.stopScanning() }
     }
 
+    /**
+     * Ensures connection to a Vitruvian device.
+     * If already connected, immediately calls onConnected.
+     * If not connected, starts scan and auto-connects to first device found.
+     * Matches parent repo behavior with proper timeouts and cleanup.
+     */
     fun ensureConnection(onConnected: () -> Unit, onFailed: () -> Unit = {}) {
+        // Cancel any existing connection attempt before starting a new one
         connectionJob?.cancel()
+        connectionJob = null
+
         connectionJob = viewModelScope.launch {
             try {
-                Logger.d { "ensureConnection: current state = ${connectionState.value}" }
-                if (connectionState.value is ConnectionState.Connected) {
-                    Logger.d { "ensureConnection: Already connected, calling onConnected()" }
-                    onConnected()
-                    return@launch
-                }
-                
-                _isAutoConnecting.value = true
-                _connectionError.value = null
-                bleRepository.startScanning()
-                
-                // Wait for device scan (Simplified auto-connect to first device for V1)
-                val device = withTimeoutOrNull(10000) {
-                    bleRepository.scannedDevices.filter { it.isNotEmpty() }.map { it.first() }.firstOrNull()
-                }
-                
-                if (device != null) {
-                    bleRepository.connect(device)
-                    // Wait for connection
-                    val connected = withTimeoutOrNull(10000) {
-                        connectionState.filter { it is ConnectionState.Connected }.firstOrNull()
-                    }
-                    
-                    if (connected != null) {
-                        _isAutoConnecting.value = false
+                when (connectionState.value) {
+                    is ConnectionState.Connected -> {
+                        Logger.d { "ensureConnection: Already connected, calling onConnected()" }
                         onConnected()
-                    } else {
-                        _connectionError.value = "Connection failed"
-                        _isAutoConnecting.value = false
                     }
-                } else {
-                    _connectionError.value = "No device found"
-                    _isAutoConnecting.value = false
-                    bleRepository.stopScanning()
+                    else -> {
+                        _isAutoConnecting.value = true
+                        _connectionError.value = null
+
+                        // Start scanning
+                        startScanning()
+
+                        // Wait for first discovered device (with timeout matching parent repo: 30s)
+                        val found = withTimeoutOrNull(30000) {
+                            scannedDevices
+                                .filter { it.isNotEmpty() }
+                                .take(1)
+                                .collect { devices ->
+                                    stopScanning()
+                                    val device = devices.firstOrNull()
+                                    if (device != null) {
+                                        _pendingConnectionCallback = onConnected
+                                        connectToDevice(device.address)
+
+                                        // Wait for Connected state with timeout (15 seconds, matching parent repo)
+                                        val connected = withTimeoutOrNull(15000) {
+                                            connectionState
+                                                .filter { it is ConnectionState.Connected }
+                                                .take(1)
+                                                .collect { }
+                                            true // Return true if we got Connected
+                                        }
+
+                                        _isAutoConnecting.value = false
+                                        if (connected == true) {
+                                            onConnected()
+                                        } else {
+                                            // Connection timeout or failure - clean up BLE connection
+                                            Logger.d { "Connection timeout or failure - cleaning up" }
+                                            bleRepository.cancelConnection()
+                                            _pendingConnectionCallback = null  // Clear callback on failure
+                                            _connectionError.value = "Connection timeout"
+                                            onFailed()
+                                        }
+                                    } else {
+                                        _pendingConnectionCallback = null  // Clear callback on failure
+                                        _isAutoConnecting.value = false
+                                        _connectionError.value = "No device found"
+                                        onFailed()
+                                    }
+                                }
+                        }
+
+                        if (found == null) {
+                            // Scan timeout - no device found
+                            stopScanning()
+                            _pendingConnectionCallback = null
+                            _isAutoConnecting.value = false
+                            _connectionError.value = "No device found"
+                            onFailed()
+                        }
+                    }
                 }
             } catch (e: Exception) {
-                _connectionError.value = "Error: ${e.message}"
+                Logger.e { "ensureConnection error: ${e.message}" }
+                stopScanning()
+                bleRepository.cancelConnection()
+                _pendingConnectionCallback = null
                 _isAutoConnecting.value = false
+                _connectionError.value = "Error: ${e.message}"
+                onFailed()
             }
         }
     }
@@ -1210,21 +1281,34 @@ class MainViewModel constructor(
     /**
      * Prepare for Just Lift mode by resetting workout state while preserving weight.
      * Called when entering Just Lift screen with non-Idle state.
+     * Matches parent repo behavior: resets state if needed, sets parameters, enables handle detection.
      */
     fun prepareForJustLift() {
         viewModelScope.launch {
+            val currentState = _workoutState.value
             val currentWeight = _workoutParameters.value.weightPerCableKg
-            Logger.d("prepareForJustLift: Resetting state, preserving weight=$currentWeight kg")
+            Logger.d("prepareForJustLift: BEFORE - weight=$currentWeight kg")
 
-            // Reset workout state to Idle
-            _workoutState.value = WorkoutState.Idle
-            _repCount.value = RepCount()
+            if (currentState !is WorkoutState.Idle) {
+                Logger.d("Preparing for Just Lift: Resetting from ${currentState::class.simpleName} to Idle")
+                resetForNewWorkout()
+                _workoutState.value = WorkoutState.Idle
+            } else {
+                Logger.d("Just Lift already in Idle state, ensuring auto-start is enabled")
+            }
 
-            // Preserve weight in parameters
+            // Set parameters first before enabling handle detection
             _workoutParameters.value = _workoutParameters.value.copy(
                 isJustLift = true,
-                useAutoStart = true
+                useAutoStart = true,
+                selectedExerciseId = null  // Clear exercise selection for Just Lift
             )
+
+            // Enable handle detection - auto-start triggers when user grabs handles
+            enableHandleDetection()
+            val newWeight = _workoutParameters.value.weightPerCableKg
+            Logger.d("prepareForJustLift: AFTER - weight=$newWeight kg")
+            Logger.d("Just Lift ready: State=Idle, AutoStart=enabled, waiting for handle grab")
         }
     }
 
@@ -1677,24 +1761,31 @@ class MainViewModel constructor(
             // Handle based on workout mode
             if (isJustLift) {
                 // Just Lift mode: Auto-advance to next set after showing summary
+                Logger.d("⏱️ Just Lift: IMMEDIATE reset for next set (while showing summary)")
+
+                // 1. Reset logical state immediately
                 repCounter.reset()
                 resetAutoStopState()
 
-                // CRITICAL: Restart monitor polling to clear machine fault state (red lights)
-                // This must happen immediately after stop to reset the machine
-                bleRepository.restartMonitorPolling()
-
-                // Enable handle detection AND Just Lift waiting mode for next set
-                // This arms the state machine to detect when user grabs handles again
+                // 2. Re-enable machine detection immediately (clears faults, allows instant restart)
+                // enableHandleDetection() starts monitor polling with forAutoStart=true, which clears faults AND enables auto-start
                 enableHandleDetection()
                 bleRepository.enableJustLiftWaitingMode()
-                Logger.d("Just Lift: Machine reset & armed for next auto-start")
 
-                delay(5000) // Show summary for 5 seconds
+                Logger.d("⏱️ Just Lift: Machine armed & ready. Showing summary for 5s...")
 
+                // 3. Show summary for 5 seconds (User preference)
+                // Note: If user grabs handles during this delay, auto-start logic in handleState collector
+                // will interrupt this and start the next set immediately.
+                delay(5000)
+
+                // 4. Transition UI to Idle (only if we haven't already started a new set)
                 if (_workoutState.value is WorkoutState.SetSummary) {
-                    resetForNewWorkout()
+                    Logger.d("⏱️ Just Lift: Summary complete, UI transitioning to Idle")
+                    resetForNewWorkout() // Ensures clean state
                     _workoutState.value = WorkoutState.Idle
+                } else {
+                    Logger.d("⏱️ Just Lift: Summary interrupted by user action (state is ${_workoutState.value})")
                 }
             } else if (params.isAMRAP) {
                 // AMRAP mode: Auto-advance to rest timer and next set (like Just Lift)
@@ -1818,6 +1909,14 @@ class MainViewModel constructor(
             }
         } catch (e: Exception) {
             Logger.e(e) { "Error updating gamification: ${e.message}" }
+        }
+
+        // Save exercise defaults for next time (only for Just Lift and Single Exercise modes)
+        // Routines have their own saved configuration and should not interfere with these defaults
+        if (params.isJustLift) {
+            // Just Lift defaults saving handled separately
+        } else if (isSingleExerciseMode()) {
+            saveSingleExerciseDefaultsFromWorkout()
         }
     }
 
@@ -1969,6 +2068,72 @@ class MainViewModel constructor(
     private fun isSingleExerciseMode(): Boolean {
         val routine = _loadedRoutine.value
         return routine == null || routine.id.startsWith(TEMP_SINGLE_EXERCISE_PREFIX)
+    }
+
+    /**
+     * Save Single Exercise defaults after completing a single exercise workout
+     * Called from saveWorkoutSession when in Single Exercise mode (temp routine)
+     */
+    private suspend fun saveSingleExerciseDefaultsFromWorkout() {
+        val routine = _loadedRoutine.value ?: return
+
+        // Only save for temp single exercise routines, not for regular routines
+        if (!routine.id.startsWith(TEMP_SINGLE_EXERCISE_PREFIX)) return
+
+        val currentExercise = routine.exercises.getOrNull(_currentExerciseIndex.value) ?: return
+        val exerciseId = currentExercise.exercise.id ?: return
+
+        val (eccentricLoad, echoLevel) = when (val wt = currentExercise.workoutType) {
+            is WorkoutType.Echo -> wt.eccentricLoad.percentage to wt.level.levelValue
+            is WorkoutType.Program -> 100 to 1
+        }
+
+        try {
+            val setReps = currentExercise.setReps.ifEmpty { listOf(10) }
+            val numSets = setReps.size
+
+            // Normalize setWeightsPerCableKg to match setReps size (or be empty)
+            val normalizedSetWeights = when {
+                currentExercise.setWeightsPerCableKg.isEmpty() -> emptyList()
+                currentExercise.setWeightsPerCableKg.size == numSets -> currentExercise.setWeightsPerCableKg
+                else -> emptyList() // Reset if invalid size
+            }
+
+            // Normalize setRestSeconds to match setReps size (or be empty)
+            val normalizedSetRest = when {
+                currentExercise.setRestSeconds.isEmpty() -> emptyList()
+                currentExercise.setRestSeconds.size == numSets -> currentExercise.setRestSeconds
+                else -> emptyList() // Reset if invalid size
+            }
+
+            // Convert WorkoutType to workoutModeId (Int)
+            val workoutModeId = when (val wt = currentExercise.workoutType) {
+                is WorkoutType.Program -> wt.mode.modeValue
+                is WorkoutType.Echo -> 10
+            }
+
+            val defaults = com.devil.phoenixproject.data.preferences.SingleExerciseDefaults(
+                exerciseId = exerciseId,
+                cableConfig = currentExercise.cableConfig.name,
+                setReps = setReps,
+                weightPerCableKg = currentExercise.weightPerCableKg.coerceAtLeast(0f),
+                setWeightsPerCableKg = normalizedSetWeights,
+                progressionKg = currentExercise.progressionKg.coerceIn(-50f, 50f),
+                setRestSeconds = normalizedSetRest,
+                workoutModeId = workoutModeId,
+                eccentricLoadPercentage = eccentricLoad,
+                echoLevelValue = echoLevel,
+                duration = currentExercise.duration?.takeIf { it > 0 } ?: 0,
+                isAMRAP = currentExercise.isAMRAP,
+                perSetRestTime = currentExercise.perSetRestTime
+            )
+            preferencesManager.saveSingleExerciseDefaults(defaults)
+            Logger.d { "Saved Single Exercise defaults for ${currentExercise.exercise.name} (${currentExercise.cableConfig})" }
+        } catch (e: IllegalArgumentException) {
+            Logger.e(e) { "Failed to save Single Exercise defaults - validation error" }
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to save Single Exercise defaults: ${e.message}" }
+        }
     }
 
     /**

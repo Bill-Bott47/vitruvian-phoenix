@@ -6,6 +6,7 @@ import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.request.crossfade
 import coil3.util.DebugLogger
 import androidx.compose.ui.window.ComposeUIViewController
+import com.devil.phoenixproject.presentation.components.RequireBlePermissions
 
 /**
  * Creates the main UIViewController for iOS that hosts the Compose Multiplatform UI.
@@ -13,7 +14,9 @@ import androidx.compose.ui.window.ComposeUIViewController
  */
 fun MainViewController() = ComposeUIViewController {
     ensureImageLoader()
-    App()
+    RequireBlePermissions {
+        App()
+    }
 }
 
 /**

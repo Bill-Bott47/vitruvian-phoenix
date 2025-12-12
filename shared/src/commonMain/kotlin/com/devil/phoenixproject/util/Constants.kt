@@ -19,7 +19,7 @@ object Constants {
     const val DEFAULT_WARMUP_REPS = 3
 
     // BLE configuration
-    const val BLE_SCAN_TIMEOUT_MS = 10000L
+    const val BLE_SCAN_TIMEOUT_MS = 30000L  // Matches parent repo BleConstants.SCAN_TIMEOUT_MS
     const val BLE_CONNECTION_TIMEOUT_MS = 15000L
 
     // Workout detection thresholds
