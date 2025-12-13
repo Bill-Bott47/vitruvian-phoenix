@@ -1,9 +1,9 @@
 package com.devil.phoenixproject.di
 
 import com.devil.phoenixproject.data.migration.MigrationManager
-import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 import org.koin.dsl.KoinAppDeclaration
+import org.koin.mp.KoinPlatform
 
 fun initKoin(appDeclaration: KoinAppDeclaration = {}) = startKoin {
     appDeclaration()
@@ -23,7 +23,7 @@ fun doInitKoin() = initKoin {}
  */
 fun runMigrations() {
     try {
-        val koin = GlobalContext.get()
+        val koin = KoinPlatform.getKoin()
         val migrationManager = koin.get<MigrationManager>()
         migrationManager.checkAndRunMigrations()
     } catch (e: Exception) {

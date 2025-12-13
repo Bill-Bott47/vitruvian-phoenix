@@ -25,10 +25,12 @@ local.properties
 
 # iOS
 iosApp/Pods/
-iosApp/*.xcworkspace/
-iosApp/*.xcodeproj/xcuserdata/
-iosApp/*.xcodeproj/project.xcworkspace/
-iosApp/DerivedData/
+iosApp/**/*.xcworkspace/
+**/xcuserdata/
+**/*.xcuserstate
+**/project.xcworkspace/xcuserdata/
+iosApp/**/DerivedData/
+iosApp/VitruvianPhoenix/compose-resources/
 
 # Desktop
 /out/

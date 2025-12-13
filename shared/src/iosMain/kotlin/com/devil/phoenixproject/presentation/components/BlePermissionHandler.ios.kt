@@ -39,7 +39,7 @@ fun RequireBlePermissions(
     // On iOS, we show guidance initially, then proceed
     // The actual permission will be requested by CoreBluetooth when scanning starts
     var permissionState by remember {
-        mutableStateOf(BlePermissionState.NotGranted)
+        mutableStateOf<BlePermissionState>(BlePermissionState.NotGranted)
     }
 
     when (permissionState) {
