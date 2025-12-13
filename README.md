@@ -20,14 +20,21 @@ Your support helps keep the machines running and the code flowing!
 
 This app enables local control of Vitruvian Trainer machines after the company's bankruptcy. It's a community rescue project providing native applications for multiple platforms to keep these machines functional and prevent them from becoming e-waste.
 
-## 🚀 Supported Platforms
+## Installation
+
+Download the latest release and follow the installation guide for your platform:
+
+| Platform | Download | Installation Guide |
+|----------|----------|-------------------|
+| **Android** | [APK Download](../../releases) | [Android Install Guide](ANDROID_INSTALL.md) |
+| **iOS** | [IPA Download](../../releases) | [iOS Install Guide](iOS_INSTALL.md) |
+
+## Supported Platforms
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| **Android** | 🔄 In Development | BLE support via native APIs |
-| **iOS** | 🔄 In Development | BLE support via CoreBluetooth |
-| **Desktop (Linux)** | 🔄 In Development | BLE support via BlueZ |
-| **Desktop (Windows/macOS)** | 🔄 In Development | BLE support via platform APIs |
+| **Android** | Beta | BLE support via native APIs |
+| **iOS** | Beta | BLE support via CoreBluetooth |
 
 ## Features
 
@@ -68,16 +75,14 @@ This app enables local control of Vitruvian Trainer machines after the company's
 ## Project Structure
 
 ```
-Project-Phoenix-2.0/
+Project-Phoenix-MP/
 ├── shared/                    # Shared Kotlin Multiplatform code
 │   └── src/
 │       ├── commonMain/        # Common business logic
 │       ├── androidMain/       # Android-specific implementations
-│       ├── iosMain/           # iOS-specific implementations
-│       └── desktopMain/       # Desktop-specific implementations
+│       └── iosMain/           # iOS-specific implementations
 ├── androidApp/                # Android application
 ├── iosApp/                    # iOS application (Xcode project)
-├── desktopApp/                # Desktop application (Linux, Windows, macOS)
 ├── gradle/                    # Gradle wrapper and version catalog
 ├── build.gradle.kts           # Root build configuration
 └── settings.gradle.kts        # Project settings
@@ -96,13 +101,14 @@ Project-Phoenix-2.0/
 ./gradlew :androidApp:assembleDebug
 ```
 
-### Building the Desktop App
-```bash
-./gradlew :desktopApp:run
-```
-
 ### Building for iOS
-Open `iosApp/iosApp.xcodeproj` in Xcode and build from there.
+```bash
+# Build the shared framework first
+./gradlew :shared:assembleXCFramework
+
+# Then open in Xcode and build
+open iosApp/VitruvianPhoenix/VitruvianPhoenix.xcodeproj
+```
 
 ## Hardware Compatibility
 
