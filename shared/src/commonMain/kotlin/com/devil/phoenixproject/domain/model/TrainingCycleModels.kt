@@ -25,7 +25,9 @@ data class TrainingCycle(
     val description: String?,
     val days: List<CycleDay>,
     val createdAt: Long,
-    val isActive: Boolean
+    val isActive: Boolean,
+    val progressionRule: ProgressionRule? = null,
+    val weekNumber: Int = 1
 ) {
     companion object {
         fun create(
@@ -33,14 +35,18 @@ data class TrainingCycle(
             name: String,
             description: String? = null,
             days: List<CycleDay> = emptyList(),
-            isActive: Boolean = false
+            isActive: Boolean = false,
+            progressionRule: ProgressionRule? = null,
+            weekNumber: Int = 1
         ) = TrainingCycle(
             id = id,
             name = name,
             description = description,
             days = days,
             createdAt = currentTimeMillis(),
-            isActive = isActive
+            isActive = isActive,
+            progressionRule = progressionRule,
+            weekNumber = weekNumber
         )
     }
 }
