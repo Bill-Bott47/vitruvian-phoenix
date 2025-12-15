@@ -378,3 +378,48 @@ fun List<CompletedSet>.totalVolume(): Float {
 fun List<CompletedSet>.workingSets(): List<CompletedSet> {
     return filter { it.setType != SetType.WARMUP }
 }
+
+/**
+ * Types of progression strategies for training cycles.
+ */
+enum class ProgressionType {
+    /** Increase weight by percentage (e.g., +2.5%) */
+    PERCENTAGE,
+    /** Increase weight by fixed amount (e.g., +2.5kg) */
+    FIXED_WEIGHT,
+    /** No automatic progression suggestions */
+    MANUAL
+}
+
+/**
+ * Defines how weight progression works for a training cycle.
+ */
+data class ProgressionRule(
+    val type: ProgressionType,
+    val incrementPercent: Float? = null,
+    val incrementKgUpper: Float? = null,
+    val incrementKgLower: Float? = null,
+    val triggerCondition: String? = null,
+    val cycleWeeks: Int? = null
+) {
+    companion object {
+        /** Standard percentage-based progression (+2.5% when all sets completed) */
+        fun percentage(percent: Float = 2.5f) = ProgressionRule(
+            type = ProgressionType.PERCENTAGE,
+            incrementPercent = percent,
+            triggerCondition = "all_sets_completed"
+        )
+
+        /** 5/3/1 style fixed weight progression */
+        fun fiveThreeOne() = ProgressionRule(
+            type = ProgressionType.FIXED_WEIGHT,
+            incrementKgUpper = 2.5f,
+            incrementKgLower = 5.0f,
+            triggerCondition = "cycle_complete",
+            cycleWeeks = 4
+        )
+
+        /** No automatic progression */
+        fun manual() = ProgressionRule(type = ProgressionType.MANUAL)
+    }
+}
