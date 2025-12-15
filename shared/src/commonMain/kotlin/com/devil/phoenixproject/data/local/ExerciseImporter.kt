@@ -161,7 +161,8 @@ class ExerciseImporter(
                             timesPerformed = 0L,
                             lastPerformed = null,
                             aliases = aliasesStr,
-                            defaultCableConfig = cableConfig
+                            defaultCableConfig = cableConfig,
+                            one_rep_max_kg = null
                         )
                         importedCount++
 

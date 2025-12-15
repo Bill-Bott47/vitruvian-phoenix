@@ -45,7 +45,8 @@ class SqlDelightExerciseRepository(
         timesPerformed: Long,
         lastPerformed: Long?,
         aliases: String?,
-        defaultCableConfig: String
+        defaultCableConfig: String,
+        one_rep_max_kg: Double?
     ): Exercise {
         return Exercise(
             id = id,
@@ -60,7 +61,8 @@ class SqlDelightExerciseRepository(
             },
             isFavorite = isFavorite == 1L,
             isCustom = isCustom == 1L,
-            timesPerformed = timesPerformed.toInt()
+            timesPerformed = timesPerformed.toInt(),
+            oneRepMaxKg = one_rep_max_kg?.toFloat()
         )
     }
 
@@ -208,7 +210,8 @@ class SqlDelightExerciseRepository(
                     timesPerformed = 0L,
                     lastPerformed = null,
                     aliases = null,
-                    defaultCableConfig = exercise.defaultCableConfig.name
+                    defaultCableConfig = exercise.defaultCableConfig.name,
+                    one_rep_max_kg = exercise.oneRepMaxKg?.toDouble()
                 )
 
                 Logger.d { "Created custom exercise: ${exercise.name} with ID: $customId" }
@@ -251,6 +254,7 @@ class SqlDelightExerciseRepository(
                     minRepRange = null,
                     aliases = null,
                     defaultCableConfig = exercise.defaultCableConfig.name,
+                    one_rep_max_kg = exercise.oneRepMaxKg?.toDouble(),
                     id = exerciseId
                 )
 
