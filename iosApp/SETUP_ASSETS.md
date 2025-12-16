@@ -65,52 +65,72 @@ The app icon source image is located at:
 
 ## Sound Files
 
+iOS sound playback is implemented in `HapticFeedbackEffect.ios.kt` using AVAudioPlayer. The code automatically looks for sound files in the app bundle.
+
 ### Source Files
 Android sound files are located at:
-- `androidApp/src/main/res/raw/beep.ogg`
-- `androidApp/src/main/res/raw/beepboop.ogg`
-- `androidApp/src/main/res/raw/boopbeepbeep.ogg`
-- `androidApp/src/main/res/raw/chirpchirp.ogg`
-- `androidApp/src/main/res/raw/restover.ogg`
+- `androidApp/src/main/res/raw/beep.ogg` → REP_COMPLETED
+- `androidApp/src/main/res/raw/beepboop.ogg` → WARMUP_COMPLETE
+- `androidApp/src/main/res/raw/boopbeepbeep.ogg` → WORKOUT_COMPLETE
+- `androidApp/src/main/res/raw/chirpchirp.ogg` → WORKOUT_START/END
+- `androidApp/src/main/res/raw/restover.ogg` → REST_ENDING
 
-### Conversion Steps
+### Automated Conversion (Recommended)
+
+Run the conversion script on macOS:
+```bash
+cd iosApp
+chmod +x convert_sounds.sh
+./convert_sounds.sh
+```
+
+This script requires ffmpeg: `brew install ffmpeg`
+
+### Manual Conversion Steps
 
 1. **Convert OGG to iOS Format**
-   - iOS supports `.caf` (Core Audio Format) or `.m4a` formats
-   - Use `afconvert` command-line tool (macOS):
+   - iOS supports `.caf` (Core Audio Format), `.m4a`, `.wav`, or `.mp3`
+   - Use ffmpeg (recommended):
      ```bash
-     afconvert beep.ogg beep.caf -d ima4 -f caff
+     ffmpeg -i beep.ogg beep.caf
      ```
-   - Or use a tool like Audacity to export as `.m4a` or `.caf`
+   - Or use `afconvert` with intermediate WAV:
+     ```bash
+     ffmpeg -i beep.ogg beep.wav
+     afconvert beep.wav beep.caf -d ima4 -f caff
+     ```
 
 2. **Add to Xcode Project**
-   - Create a `Sounds` folder in your Xcode project
-   - Drag converted sound files into the folder
+   - Drag the `Sounds` folder into `VitruvianPhoenix/VitruvianPhoenix/` in Xcode
    - Ensure "Copy items if needed" is checked
-   - Add to target membership
+   - Verify target membership is set for VitruvianPhoenix
 
-3. **Note on Sound Playback**
-   - Currently, sound playback uses Android's SoundPool
-   - iOS implementation may need expect/actual pattern for AVFoundation
-   - See `shared/src/iosMain/kotlin/com/devil/phoenixproject/presentation/components/HapticFeedbackEffect.ios.kt` for iOS haptic implementation
+3. **Verify Sound Loading**
+   - The app will log sound loading status at startup
+   - Check console for: "Loaded sound: beep.caf" messages
+   - Missing sounds will show: "Sound file not found: beep"
 
 ## Quick Setup Checklist
 
 - [ ] Create `AppIcon.appiconset` with all required sizes
 - [ ] Configure app icon in target settings
 - [ ] Create `LaunchIcon.imageset` with logo
-- [ ] Create `LaunchScreenBackground.colorset` with theme colors
+- [ ] Create `LaunchScreenBackground.colorset` with theme colors (#0F172A dark / #F8FAFC light)
 - [ ] Verify `Info.plist` references launch assets correctly
-- [ ] Convert OGG sound files to CAF/M4A format
-- [ ] Add sound files to Xcode project bundle
+- [ ] Run `./convert_sounds.sh` to convert sound files (requires macOS + ffmpeg)
+- [ ] Add Sounds folder to Xcode project bundle
+- [ ] Build shared framework: `./gradlew :shared:assembleXCFramework`
+- [ ] Verify shared.xcframework is linked in Xcode
 - [ ] Test app icons display correctly on device
 - [ ] Test launch screen displays correctly
-- [ ] Test sound playback (if iOS implementation added)
+- [ ] Test sound playback and haptic feedback during workout
 
 ## Notes
 
 - App icons and launch screen assets are required for App Store submission
-- Sound files are optional but enhance user experience
-- All asset setup must be done in Xcode - these cannot be automated via code
+- Sound files are optional but enhance user experience (haptic feedback works without them)
+- All asset setup must be done in Xcode - these cannot be automated via Gradle
 - The `Info.plist` already references `LaunchIcon` and `LaunchScreenBackground` - you just need to create the assets
+- Sound playback is implemented in `shared/src/iosMain/.../HapticFeedbackEffect.ios.kt` using AVAudioPlayer
+- The app supports `.caf`, `.m4a`, `.wav`, and `.mp3` formats (tries them in that order)
 

@@ -168,6 +168,7 @@ fun ActiveWorkoutScreen(
     val workoutActions = remember(viewModel) {
         workoutActions(
             onScan = { viewModel.startScanning() },
+            onCancelScan = { viewModel.cancelScanOrConnection() },
             onDisconnect = { viewModel.disconnect() },
             onStartWorkout = {
                 viewModel.ensureConnection(

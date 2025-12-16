@@ -538,6 +538,17 @@ class MainViewModel constructor(
         viewModelScope.launch { bleRepository.stopScanning() }
     }
 
+    fun cancelScanOrConnection() {
+        viewModelScope.launch {
+            bleRepository.stopScanning()
+            // Only cancel connection if we're actually connecting
+            val state = connectionState.value
+            if (state is ConnectionState.Connecting) {
+                bleRepository.cancelConnection()
+            }
+        }
+    }
+
     fun connectToDevice(deviceAddress: String) {
         viewModelScope.launch {
             val device = scannedDevices.value.find { it.address == deviceAddress }
@@ -845,84 +856,91 @@ class MainViewModel constructor(
      * Matches parent repo behavior with proper timeouts and cleanup.
      */
     fun ensureConnection(onConnected: () -> Unit, onFailed: () -> Unit = {}) {
-        // Cancel any existing connection attempt before starting a new one
+        // If already connected, just call the callback
+        if (connectionState.value is ConnectionState.Connected) {
+            Logger.d { "ensureConnection: Already connected, calling onConnected()" }
+            onConnected()
+            return
+        }
+
+        // If already connecting/scanning, cancel and return to disconnected
+        if (connectionState.value is ConnectionState.Connecting ||
+            connectionState.value is ConnectionState.Scanning) {
+            Logger.d { "ensureConnection: Cancelling in-progress connection" }
+            cancelConnection()
+            return
+        }
+
+        // Start new connection
         connectionJob?.cancel()
         connectionJob = null
 
         connectionJob = viewModelScope.launch {
             try {
-                when (connectionState.value) {
-                    is ConnectionState.Connected -> {
-                        Logger.d { "ensureConnection: Already connected, calling onConnected()" }
+                _isAutoConnecting.value = true
+                _connectionError.value = null
+                _pendingConnectionCallback = onConnected
+
+                // Simple scan-and-connect matching parent repo behavior
+                Logger.d { "ensureConnection: Starting scanAndConnect..." }
+                val result = bleRepository.scanAndConnect(timeoutMs = 30000L)
+
+                _isAutoConnecting.value = false
+
+                if (result.isSuccess) {
+                    // Wait briefly for connection state to propagate
+                    delay(500)
+
+                    // Check if we're actually connected
+                    if (connectionState.value is ConnectionState.Connected) {
+                        Logger.d { "ensureConnection: Connected successfully" }
                         onConnected()
-                    }
-                    else -> {
-                        _isAutoConnecting.value = true
-                        _connectionError.value = null
-
-                        // Start scanning
-                        startScanning()
-
-                        // Wait for first discovered device (with timeout matching parent repo: 30s)
-                        val found = withTimeoutOrNull(30000) {
-                            scannedDevices
-                                .filter { it.isNotEmpty() }
-                                .take(1)
-                                .collect { devices ->
-                                    stopScanning()
-                                    val device = devices.firstOrNull()
-                                    if (device != null) {
-                                        _pendingConnectionCallback = onConnected
-                                        connectToDevice(device.address)
-
-                                        // Wait for Connected state with timeout (15 seconds, matching parent repo)
-                                        val connected = withTimeoutOrNull(15000) {
-                                            connectionState
-                                                .filter { it is ConnectionState.Connected }
-                                                .take(1)
-                                                .collect { }
-                                            true // Return true if we got Connected
-                                        }
-
-                                        _isAutoConnecting.value = false
-                                        if (connected == true) {
-                                            onConnected()
-                                        } else {
-                                            // Connection timeout or failure - clean up BLE connection
-                                            Logger.d { "Connection timeout or failure - cleaning up" }
-                                            bleRepository.cancelConnection()
-                                            _pendingConnectionCallback = null  // Clear callback on failure
-                                            _connectionError.value = "Connection timeout"
-                                            onFailed()
-                                        }
-                                    } else {
-                                        _pendingConnectionCallback = null  // Clear callback on failure
-                                        _isAutoConnecting.value = false
-                                        _connectionError.value = "No device found"
-                                        onFailed()
-                                    }
-                                }
+                    } else {
+                        // Wait a bit more for Connected state
+                        val connected = withTimeoutOrNull(15000) {
+                            connectionState
+                                .filter { it is ConnectionState.Connected }
+                                .first()
                         }
-
-                        if (found == null) {
-                            // Scan timeout - no device found
-                            stopScanning()
+                        if (connected != null) {
+                            Logger.d { "ensureConnection: Connected after waiting" }
+                            onConnected()
+                        } else {
+                            Logger.w { "ensureConnection: Connection didn't complete" }
+                            _connectionError.value = "Connection timeout"
                             _pendingConnectionCallback = null
-                            _isAutoConnecting.value = false
-                            _connectionError.value = "No device found"
                             onFailed()
                         }
                     }
+                } else {
+                    Logger.w { "ensureConnection: scanAndConnect failed: ${result.exceptionOrNull()?.message}" }
+                    _connectionError.value = result.exceptionOrNull()?.message ?: "Connection failed"
+                    _pendingConnectionCallback = null
+                    onFailed()
                 }
             } catch (e: Exception) {
                 Logger.e { "ensureConnection error: ${e.message}" }
-                stopScanning()
                 bleRepository.cancelConnection()
                 _pendingConnectionCallback = null
                 _isAutoConnecting.value = false
                 _connectionError.value = "Error: ${e.message}"
                 onFailed()
             }
+        }
+    }
+
+    /**
+     * Cancel any in-progress connection attempt and return to disconnected state.
+     */
+    fun cancelConnection() {
+        Logger.d { "cancelConnection: Cancelling connection attempt" }
+        connectionJob?.cancel()
+        connectionJob = null
+        _pendingConnectionCallback = null
+        _isAutoConnecting.value = false
+        viewModelScope.launch {
+            bleRepository.stopScanning()
+            bleRepository.cancelConnection()
         }
     }
 
@@ -1769,14 +1787,16 @@ class MainViewModel constructor(
                 repCounter.reset()
                 resetAutoStopState()
 
-                // 2. Re-enable machine detection immediately (clears faults, allows instant restart)
-                // enableHandleDetection() starts monitor polling with forAutoStart=true, which clears faults AND enables auto-start
+                // 2. Restart monitor polling to clear machine fault state (red lights)
+                bleRepository.restartMonitorPolling()
+
+                // 3. Re-enable machine detection (enables auto-start for next set)
                 enableHandleDetection()
                 bleRepository.enableJustLiftWaitingMode()
 
                 Logger.d("⏱️ Just Lift: Machine armed & ready. Showing summary for 5s...")
 
-                // 3. Show summary for 5 seconds (User preference)
+                // 4. Show summary for 5 seconds (User preference)
                 // Note: If user grabs handles during this delay, auto-start logic in handleState collector
                 // will interrupt this and start the next set immediately.
                 delay(5000)
@@ -2278,7 +2298,16 @@ class MainViewModel constructor(
      * Advance to the next set within a single exercise (non-routine mode).
      */
     private fun advanceToNextSetInSingleExercise() {
-        val routine = _loadedRoutine.value ?: return
+        val routine = _loadedRoutine.value
+        if (routine == null) {
+            // No routine loaded - complete the workout
+            _workoutState.value = WorkoutState.Completed
+            _currentSetIndex.value = 0
+            _currentExerciseIndex.value = 0
+            repCounter.reset()
+            resetAutoStopState()
+            return
+        }
         val currentExercise = routine.exercises.getOrNull(_currentExerciseIndex.value) ?: return
 
         if (_currentSetIndex.value < currentExercise.setReps.size - 1) {

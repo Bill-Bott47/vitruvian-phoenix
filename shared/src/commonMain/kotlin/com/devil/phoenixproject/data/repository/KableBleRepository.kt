@@ -298,6 +298,10 @@ class KableBleRepository : BleRepository {
         logRepo.info(LogEventType.SCAN_START, "Starting BLE scan for Vitruvian devices")
 
         return try {
+            // Cancel any existing scan job to prevent duplicates
+            scanJob?.cancel()
+            scanJob = null
+
             _scannedDevices.value = emptyList()
             discoveredAdvertisements.clear()
             _connectionState.value = ConnectionState.Scanning
@@ -314,9 +318,13 @@ class KableBleRepository : BleRepository {
                     // Filter by name if available
                     val name = advertisement.name
                     if (name != null) {
-                        val isVitruvian = name.startsWith("Vee_") || name.startsWith("VIT")
+                        val isVitruvian = name.startsWith("Vee_", ignoreCase = true) ||
+                                          name.startsWith("VIT", ignoreCase = true) ||
+                                          name.startsWith("Vitruvian", ignoreCase = true)
                         if (isVitruvian) {
                             log.i { "Found Vitruvian by name: $name" }
+                        } else {
+                            log.d { "Ignoring device: $name (not Vitruvian)" }
                         }
                         return@filter isVitruvian
                     }
@@ -360,8 +368,25 @@ class KableBleRepository : BleRepository {
                 }
                 .onEach { advertisement ->
                     val identifier = advertisement.identifier.toString()
+                    val advertisedName = advertisement.name
+                    val hasRealName = advertisedName != null &&
+                        (advertisedName.startsWith("Vee_", ignoreCase = true) ||
+                         advertisedName.startsWith("VIT", ignoreCase = true))
+
                     // Use name if available, otherwise use identifier as placeholder
-                    val name = advertisement.name ?: "Vitruvian ($identifier)"
+                    val name = advertisedName ?: "Vitruvian ($identifier)"
+
+                    // Skip devices without a real Vitruvian name if we already have one
+                    if (!hasRealName) {
+                        val alreadyHaveRealDevice = _scannedDevices.value.any { existing ->
+                            existing.name.startsWith("Vee_", ignoreCase = true) ||
+                            existing.name.startsWith("VIT", ignoreCase = true)
+                        }
+                        if (alreadyHaveRealDevice) {
+                            log.d { "Skipping nameless device $identifier - already have named Vitruvian device" }
+                            return@onEach
+                        }
+                    }
 
                     // Only log if this is a new device
                     if (!discoveredAdvertisements.containsKey(identifier)) {
@@ -384,7 +409,18 @@ class KableBleRepository : BleRepository {
                         address = identifier,
                         rssi = advertisement.rssi
                     )
-                    val currentDevices = _scannedDevices.value.toMutableList()
+                    var currentDevices = _scannedDevices.value.toMutableList()
+
+                    // If this is a real-named device, remove any placeholder devices first
+                    // (same physical device can advertise with different identifiers)
+                    if (hasRealName) {
+                        currentDevices = currentDevices.filter { existing ->
+                            existing.name.startsWith("Vee_", ignoreCase = true) ||
+                            existing.name.startsWith("VIT", ignoreCase = true) ||
+                            existing.address == identifier  // Keep if same address (will update below)
+                        }.toMutableList()
+                    }
+
                     val existingIndex = currentDevices.indexOfFirst { it.address == identifier }
                     if (existingIndex >= 0) {
                         currentDevices[existingIndex] = device
@@ -420,6 +456,58 @@ class KableBleRepository : BleRepository {
         scanJob = null
         if (_connectionState.value == ConnectionState.Scanning) {
             _connectionState.value = ConnectionState.Disconnected
+        }
+    }
+
+    /**
+     * Scan for first Vitruvian device and connect immediately.
+     * This is the simple flow matching parent repo behavior.
+     */
+    override suspend fun scanAndConnect(timeoutMs: Long): Result<Unit> {
+        log.i { "scanAndConnect: Starting scan and auto-connect (timeout: ${timeoutMs}ms)" }
+        logRepo.info(LogEventType.SCAN_START, "Scan and connect started")
+
+        _connectionState.value = ConnectionState.Scanning
+        _scannedDevices.value = emptyList()
+        discoveredAdvertisements.clear()
+
+        return try {
+            // Find first Vitruvian device with a real name
+            val advertisement = withTimeoutOrNull(timeoutMs) {
+                Scanner {}
+                    .advertisements
+                    .filter { adv ->
+                        val name = adv.name
+                        name != null && (
+                            name.startsWith("Vee_", ignoreCase = true) ||
+                            name.startsWith("VIT", ignoreCase = true)
+                        )
+                    }
+                    .first()
+            }
+
+            if (advertisement == null) {
+                log.w { "scanAndConnect: No Vitruvian device found within timeout" }
+                logRepo.error(LogEventType.SCAN_STOP, "No device found", details = "Timeout after ${timeoutMs}ms")
+                _connectionState.value = ConnectionState.Disconnected
+                return Result.failure(Exception("No Vitruvian device found"))
+            }
+
+            val identifier = advertisement.identifier.toString()
+            val name = advertisement.name ?: "Vitruvian"
+            log.i { "scanAndConnect: Found device $name ($identifier), connecting..." }
+
+            // Store for connection
+            discoveredAdvertisements[identifier] = advertisement
+            val device = ScannedDevice(name = name, address = identifier, rssi = advertisement.rssi)
+            _scannedDevices.value = listOf(device)
+
+            // Connect to it
+            connect(device)
+        } catch (e: Exception) {
+            log.e { "scanAndConnect failed: ${e.message}" }
+            _connectionState.value = ConnectionState.Disconnected
+            Result.failure(e)
         }
     }
 

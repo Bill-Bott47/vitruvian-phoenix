@@ -71,6 +71,7 @@ fun WorkoutHud(
         bottomBar = {
             HudBottomBar(
                 workoutParameters = workoutParameters,
+                formatWeight = formatWeight,
                 weightUnit = weightUnit,
                 onUpdateParameters = onUpdateParameters,
                 onNextExercise = onStartNextExercise, // Only if applicable, e.g. Just Lift doesn't really have next, but Routine does
@@ -220,6 +221,7 @@ private fun HudTopBar(
 @Composable
 private fun HudBottomBar(
     workoutParameters: WorkoutParameters,
+    formatWeight: (Float, WeightUnit) -> String,
     weightUnit: WeightUnit,
     onUpdateParameters: (WorkoutParameters) -> Unit,
     onNextExercise: () -> Unit,
@@ -246,7 +248,7 @@ private fun HudBottomBar(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    "${workoutParameters.weightPerCableKg} ${weightUnit.name}", // Simplified display
+                    formatWeight(workoutParameters.weightPerCableKg, weightUnit),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )

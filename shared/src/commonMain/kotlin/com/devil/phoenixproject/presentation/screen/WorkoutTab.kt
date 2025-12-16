@@ -84,6 +84,7 @@ fun WorkoutTab(
         displayToKg = actions::displayToKg,
         formatWeight = actions::formatWeight,
         onScan = actions::onScan,
+        onCancelScan = actions::onCancelScan,
         onDisconnect = actions::onDisconnect,
         onStartWorkout = actions::onStartWorkout,
         onStopWorkout = actions::onStopWorkout,
@@ -132,6 +133,7 @@ fun WorkoutTab(
     displayToKg: (Float, WeightUnit) -> Float,
     formatWeight: (Float, WeightUnit) -> String,
     onScan: () -> Unit,
+    onCancelScan: () -> Unit,
     onDisconnect: () -> Unit,
     onStartWorkout: () -> Unit,
     onStopWorkout: () -> Unit,
@@ -245,6 +247,7 @@ fun WorkoutTab(
                 ConnectionCard(
                     connectionState = connectionState,
                     onScan = onScan,
+                    onCancelScan = onCancelScan,
                     onDisconnect = onDisconnect
                 )
             }
@@ -700,6 +703,7 @@ private fun ActiveWorkoutCard(
 fun ConnectionCard(
     connectionState: ConnectionState,
     onScan: () -> Unit,
+    onCancelScan: () -> Unit,
     onDisconnect: () -> Unit
 ) {
     var showDisconnectDialog by remember { mutableStateOf(false) }
@@ -769,23 +773,33 @@ fun ConnectionCard(
                 is ConnectionState.Scanning -> {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(Spacing.small))
-                        Text("Scanning for devices...")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(Spacing.small))
+                            Text("Scanning for devices...")
+                        }
+                        TextButton(onClick = onCancelScan) {
+                            Text("Cancel")
+                        }
                     }
                 }
                 is ConnectionState.Connecting -> {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(Spacing.small))
-                        Text("Connecting...")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(Spacing.small))
+                            Text("Connecting...")
+                        }
+                        TextButton(onClick = onCancelScan) {
+                            Text("Cancel")
+                        }
                     }
                 }
                 is ConnectionState.Connected -> {

@@ -65,6 +65,9 @@ interface WorkoutActions {
     /** Start BLE scanning for Vitruvian machines */
     fun onScan()
 
+    /** Cancel ongoing scan or connection attempt */
+    fun onCancelScan()
+
     /** Disconnect from current machine */
     fun onDisconnect()
 
@@ -116,6 +119,7 @@ interface WorkoutActions {
  */
 object PreviewWorkoutActions : WorkoutActions {
     override fun onScan() {}
+    override fun onCancelScan() {}
     override fun onDisconnect() {}
     override fun onStartWorkout() {}
     override fun onStopWorkout() {}
@@ -139,6 +143,7 @@ object PreviewWorkoutActions : WorkoutActions {
  */
 fun workoutActions(
     onScan: () -> Unit,
+    onCancelScan: () -> Unit,
     onDisconnect: () -> Unit,
     onStartWorkout: () -> Unit,
     onStopWorkout: () -> Unit,
@@ -156,6 +161,7 @@ fun workoutActions(
     formatWeight: (Float, WeightUnit) -> String
 ): WorkoutActions = object : WorkoutActions {
     override fun onScan() = onScan()
+    override fun onCancelScan() = onCancelScan()
     override fun onDisconnect() = onDisconnect()
     override fun onStartWorkout() = onStartWorkout()
     override fun onStopWorkout() = onStopWorkout()

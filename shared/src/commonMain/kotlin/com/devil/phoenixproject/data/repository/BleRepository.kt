@@ -162,6 +162,14 @@ interface BleRepository {
     suspend fun connect(device: ScannedDevice): Result<Unit>
     suspend fun cancelConnection()  // Cancel an in-progress connection attempt
     suspend fun disconnect()
+
+    /**
+     * Scan for first Vitruvian device and connect to it immediately.
+     * Matches parent repo behavior - no manual device selection needed.
+     * @param timeoutMs Maximum time to scan before giving up (default 30 seconds)
+     * @return Result.success if connected, Result.failure if timeout or error
+     */
+    suspend fun scanAndConnect(timeoutMs: Long = 30000L): Result<Unit>
     suspend fun setColorScheme(schemeIndex: Int): Result<Unit>
     suspend fun sendWorkoutCommand(command: ByteArray): Result<Unit>
 
@@ -234,6 +242,7 @@ class StubBleRepository : BleRepository {
     override suspend fun connect(device: ScannedDevice) = Result.success(Unit)
     override suspend fun cancelConnection() {}
     override suspend fun disconnect() {}
+    override suspend fun scanAndConnect(timeoutMs: Long) = Result.success(Unit)
     override suspend fun setColorScheme(schemeIndex: Int) = Result.success(Unit)
     override suspend fun sendWorkoutCommand(command: ByteArray) = Result.success(Unit)
     override suspend fun sendInitSequence() = Result.success(Unit)

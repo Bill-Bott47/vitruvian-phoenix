@@ -101,9 +101,12 @@ fun EnhancedCablePositionBar(
     val romPaddingTop = 0.90f     // ROM top appears at 90% (small headroom at top)
     val romDisplayRange = romPaddingTop - romPaddingBottom  // 0.65 (65% of bar for ROM)
 
+    // Minimum ROM range required for ROM-relative scaling (prevents too-tight ranges)
+    val minRomRange = 100f  // 100mm minimum range
+
     // Calculate normalized position with ROM-relative scaling
     val animatedPosition by animateFloatAsState(
-        targetValue = if (minPosition != null && maxPosition != null && maxPosition > minPosition) {
+        targetValue = if (minPosition != null && maxPosition != null && (maxPosition - minPosition) >= minRomRange) {
             // ROM established: normalize relative to ROM range with padding
             val romRange = maxPosition - minPosition
             val positionInRom = (currentPosition - minPosition) / romRange  // 0-1 within ROM
@@ -120,22 +123,22 @@ fun EnhancedCablePositionBar(
     )
 
     // Calculate ROM marker positions (fixed at padding boundaries when ROM established)
-    val minProgress = if (minPosition != null && maxPosition != null && maxPosition > minPosition) {
+    val minProgress = if (minPosition != null && maxPosition != null && (maxPosition - minPosition) >= minRomRange) {
         romPaddingBottom  // ROM bottom marker at 25%
     } else null
 
-    val maxProgress = if (minPosition != null && maxPosition != null && maxPosition > minPosition) {
+    val maxProgress = if (minPosition != null && maxPosition != null && (maxPosition - minPosition) >= minRomRange) {
         romPaddingTop  // ROM top marker at 90%
     } else null
 
     // Ghost markers also normalized to ROM-relative display
-    val ghostMinProgress = if (minPosition != null && maxPosition != null && maxPosition > minPosition && ghostMin != null) {
+    val ghostMinProgress = if (minPosition != null && maxPosition != null && (maxPosition - minPosition) >= minRomRange && ghostMin != null) {
         val romRange = maxPosition - minPosition
         val posInRom = (ghostMin - minPosition) / romRange
         (romPaddingBottom + posInRom * romDisplayRange).coerceIn(0f, 1f)
     } else null
 
-    val ghostMaxProgress = if (minPosition != null && maxPosition != null && maxPosition > minPosition && ghostMax != null) {
+    val ghostMaxProgress = if (minPosition != null && maxPosition != null && (maxPosition - minPosition) >= minRomRange && ghostMax != null) {
         val romRange = maxPosition - minPosition
         val posInRom = (ghostMax - minPosition) / romRange
         (romPaddingBottom + posInRom * romDisplayRange).coerceIn(0f, 1f)

@@ -62,6 +62,7 @@ fun WorkoutTabAlt(
     displayToKg: (Float, WeightUnit) -> Float,
     formatWeight: (Float, WeightUnit) -> String,
     onScan: () -> Unit,
+    onCancelScan: () -> Unit,
     onDisconnect: () -> Unit,
     onStartWorkout: () -> Unit,
     onStopWorkout: () -> Unit,
@@ -119,6 +120,7 @@ fun WorkoutTabAlt(
                 connectionState = connectionState,
                 onDisconnect = onDisconnect,
                 onScan = onScan,
+                onCancelScan = onCancelScan,
                 exerciseName = currentExercise?.exercise?.name ?: exerciseEntity?.name ?: "Quick Workout",
                 workoutType = workoutParameters.workoutType.displayName
             )
@@ -341,6 +343,7 @@ private fun AltCompactHeader(
     connectionState: ConnectionState,
     onDisconnect: () -> Unit,
     onScan: () -> Unit,
+    onCancelScan: () -> Unit,
     exerciseName: String,
     workoutType: String
 ) {
@@ -351,7 +354,13 @@ private fun AltCompactHeader(
     ) {
         // Connection Pill
         Surface(
-            onClick = { if (connectionState is ConnectionState.Disconnected) onScan() else onDisconnect() },
+            onClick = {
+                when (connectionState) {
+                    is ConnectionState.Disconnected -> onScan()
+                    is ConnectionState.Scanning, is ConnectionState.Connecting -> onCancelScan()
+                    else -> onDisconnect()
+                }
+            },
             shape = RoundedCornerShape(50),
             color = if (connectionState is ConnectionState.Connected)
                 MaterialTheme.colorScheme.primaryContainer
