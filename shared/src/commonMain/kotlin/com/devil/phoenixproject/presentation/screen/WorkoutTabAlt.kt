@@ -11,9 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -250,13 +248,21 @@ fun WorkoutTabAlt(
             workoutState is WorkoutState.Active &&
             currentMetric != null) {
 
+            // Calculate danger zone status for both cables
+            val isDangerA = repRanges?.isInDangerZone(currentMetric.positionA, currentMetric.positionB) ?: false
+            val isDangerB = isDangerA  // Same check applies to both (symmetric)
+
             EnhancedCablePositionBar(
                 label = "L",
                 currentPosition = currentMetric.positionA,
                 velocity = currentMetric.velocityA,
                 minPosition = repRanges?.minPosA,
                 maxPosition = repRanges?.maxPosA,
-                isActive = currentMetric.positionA > 0,
+                // Ghost indicators: use last rep's rolling average positions
+                ghostMin = repRanges?.lastRepBottomA,
+                ghostMax = repRanges?.lastRepTopA,
+                // isActive defaults to true - bars only shown during Active state anyway
+                isDanger = isDangerA,
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .width(32.dp) // Thicker bars
@@ -270,7 +276,11 @@ fun WorkoutTabAlt(
                 velocity = currentMetric.velocityB,
                 minPosition = repRanges?.minPosB,
                 maxPosition = repRanges?.maxPosB,
-                isActive = currentMetric.positionB > 0,
+                // Ghost indicators: use last rep's rolling average positions
+                ghostMin = repRanges?.lastRepBottomB,
+                ghostMax = repRanges?.lastRepTopB,
+                // isActive defaults to true - bars only shown during Active state anyway
+                isDanger = isDangerB,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .width(32.dp) // Thicker bars

@@ -983,10 +983,71 @@ class MainViewModel constructor(
         }
     }
 
+    /**
+     * Proceed from set summary to rest timer or completion.
+     * Called when user clicks "Continue" button on set summary screen,
+     * or when autoplay countdown finishes.
+     *
+     * Parity with parent repo: MainViewModel.kt lines 1562-1653
+     */
     fun proceedFromSummary() {
-        _workoutState.value = WorkoutState.Idle
-        // Clear RPE for next set
-        _currentSetRpe.value = null
+        viewModelScope.launch {
+            val routine = _loadedRoutine.value
+            val isJustLift = _workoutParameters.value.isJustLift
+
+            Logger.d { "proceedFromSummary: routine=${routine?.name ?: "NULL"}, isJustLift=$isJustLift" }
+            Logger.d { "  currentExerciseIndex=${_currentExerciseIndex.value}, currentSetIndex=${_currentSetIndex.value}" }
+
+            // Check if there are more sets or exercises remaining
+            val hasMoreSets = routine?.let {
+                val currentExercise = it.exercises.getOrNull(_currentExerciseIndex.value)
+                val isAMRAPExercise = currentExercise?.isAMRAP == true
+
+                if (isAMRAPExercise) {
+                    true // AMRAP always has "more sets" - user decides when to move on
+                } else {
+                    currentExercise != null && _currentSetIndex.value < currentExercise.setReps.size - 1
+                }
+            } ?: false
+
+            val hasMoreExercises = routine?.let {
+                _currentExerciseIndex.value < it.exercises.size - 1
+            } ?: false
+
+            // Single Exercise mode (not Just Lift, includes temp routines from SingleExerciseScreen)
+            val isSingleExercise = isSingleExerciseMode() && !isJustLift
+            // Only show rest timer if there are actually more sets/exercises remaining
+            val shouldShowRestTimer = (hasMoreSets || hasMoreExercises) && !isJustLift
+
+            Logger.d { "proceedFromSummary: hasMoreSets=$hasMoreSets, hasMoreExercises=$hasMoreExercises" }
+            Logger.d { "  isSingleExercise=$isSingleExercise, shouldShowRestTimer=$shouldShowRestTimer" }
+
+            // Clear RPE for next set
+            _currentSetRpe.value = null
+
+            // Show rest timer if there are more sets/exercises
+            // (regardless of autoplay preference - autoplay only controls auto-advance after rest)
+            if (shouldShowRestTimer) {
+                Logger.d { "proceedFromSummary: Starting rest timer..." }
+                startRestTimer()
+            } else {
+                Logger.d { "proceedFromSummary: No rest timer - marking as completed/idle" }
+                repCounter.reset()
+                resetAutoStopState()
+
+                // Auto-reset for Just Lift mode to enable immediate restart
+                if (isJustLift) {
+                    Logger.d { "Just Lift mode: Auto-resetting to Idle" }
+                    resetForNewWorkout()
+                    _workoutState.value = WorkoutState.Idle
+                    enableHandleDetection()
+                    bleRepository.enableJustLiftWaitingMode()
+                    Logger.d { "Just Lift mode: Ready for next exercise" }
+                } else {
+                    _workoutState.value = WorkoutState.Completed
+                }
+            }
+        }
     }
 
     /**
@@ -1896,9 +1957,13 @@ class MainViewModel constructor(
         val working = _repCount.value.workingReps
         val duration = currentTimeMillis() - workoutStartTime
 
+        // Take a snapshot of metrics to avoid ConcurrentModificationException
+        // (metrics are being collected on another coroutine)
+        val metricsSnapshot = collectedMetrics.toList()
+
         // Calculate actual measured weight from metrics (if available)
-        val measuredPerCableKg = if (collectedMetrics.isNotEmpty()) {
-            collectedMetrics.maxOf { it.totalLoad } / 2f
+        val measuredPerCableKg = if (metricsSnapshot.isNotEmpty()) {
+            metricsSnapshot.maxOf { it.totalLoad } / 2f
         } else {
             params.weightPerCableKg
         }
@@ -1923,11 +1988,11 @@ class MainViewModel constructor(
 
         workoutRepository.saveSession(session)
 
-        if (collectedMetrics.isNotEmpty()) {
-            workoutRepository.saveMetrics(sessionId, collectedMetrics)
+        if (metricsSnapshot.isNotEmpty()) {
+            workoutRepository.saveMetrics(sessionId, metricsSnapshot)
         }
 
-        Logger.d("Saved workout session: $sessionId with ${collectedMetrics.size} metrics")
+        Logger.d("Saved workout session: $sessionId with ${metricsSnapshot.size} metrics")
 
         // Check for personal record (skip for Just Lift and Echo modes)
         params.selectedExerciseId?.let { exerciseId ->

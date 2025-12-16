@@ -4,7 +4,6 @@ import co.touchlab.kermit.Logger
 import com.devil.phoenixproject.domain.model.RepCount
 import com.devil.phoenixproject.domain.model.RepEvent
 import com.devil.phoenixproject.domain.model.RepType
-import kotlin.math.max
 
 /**
  * Handles rep counting based on notifications emitted by the Vitruvian machine.
@@ -57,6 +56,12 @@ class RepCounterFromMachine {
     private var maxRepPosBRange: Pair<Float, Float>? = null
     private var minRepPosBRange: Pair<Float, Float>? = null
 
+    // Last rep's raw positions (for ghost indicators) - captured before averaging
+    private var lastRepTopA: Float? = null
+    private var lastRepTopB: Float? = null
+    private var lastRepBottomA: Float? = null
+    private var lastRepBottomB: Float? = null
+
     var onRepEvent: ((RepEvent) -> Unit)? = null
 
     fun configure(
@@ -101,6 +106,11 @@ class RepCounterFromMachine {
         minRepPosARange = null
         maxRepPosBRange = null
         minRepPosBRange = null
+        // Clear last rep ghost positions
+        lastRepTopA = null
+        lastRepTopB = null
+        lastRepBottomA = null
+        lastRepBottomB = null
     }
 
     /**
@@ -423,10 +433,14 @@ class RepCounterFromMachine {
 
         val window = getWindowSize()
         if (posA > 0f) {
+            // Capture raw value for ghost indicator before adding to averaging list
+            lastRepTopA = posA
             topPositionsA.add(posA)
             if (topPositionsA.size > window) topPositionsA.removeAt(0)
         }
         if (posB > 0f) {
+            // Capture raw value for ghost indicator before adding to averaging list
+            lastRepTopB = posB
             topPositionsB.add(posB)
             if (topPositionsB.size > window) topPositionsB.removeAt(0)
         }
@@ -439,10 +453,14 @@ class RepCounterFromMachine {
 
         val window = getWindowSize()
         if (posA > 0f) {
+            // Capture raw value for ghost indicator before adding to averaging list
+            lastRepBottomA = posA
             bottomPositionsA.add(posA)
             if (bottomPositionsA.size > window) bottomPositionsA.removeAt(0)
         }
         if (posB > 0f) {
+            // Capture raw value for ghost indicator before adding to averaging list
+            lastRepBottomB = posB
             bottomPositionsB.add(posB)
             if (bottomPositionsB.size > window) bottomPositionsB.removeAt(0)
         }
@@ -488,10 +506,6 @@ class RepCounterFromMachine {
 
     fun shouldStopWorkout(): Boolean = shouldStop
 
-    fun getCurrentRepCount(): RepCount = getRepCount()
-
-    fun getCalibratedTopPosition(): Float? = maxRepPosA
-
     fun getRepRanges(): RepRanges = RepRanges(
         minPosA = minRepPosA,
         maxPosA = maxRepPosA,
@@ -500,7 +514,12 @@ class RepCounterFromMachine {
         minRangeA = minRepPosARange,
         maxRangeA = maxRepPosARange,
         minRangeB = minRepPosBRange,
-        maxRangeB = maxRepPosBRange
+        maxRangeB = maxRepPosBRange,
+        // Last rep's raw positions for ghost indicators
+        lastRepTopA = lastRepTopA,
+        lastRepTopB = lastRepTopB,
+        lastRepBottomA = lastRepBottomA,
+        lastRepBottomB = lastRepBottomB
     )
 
     fun hasMeaningfulRange(minRangeThreshold: Float = 50f): Boolean {
@@ -548,6 +567,11 @@ class RepCounterFromMachine {
 /**
  * Snapshot of the discovered rep ranges for UI/diagnostics.
  * Position values are in mm (Float).
+ *
+ * Includes:
+ * - ROM boundaries (min/max averaged positions)
+ * - Last rep's raw positions (for ghost indicators)
+ * - Helper function to check danger zone status
  */
 data class RepRanges(
     val minPosA: Float?,
@@ -557,10 +581,41 @@ data class RepRanges(
     val minRangeA: Pair<Float, Float>?,
     val maxRangeA: Pair<Float, Float>?,
     val minRangeB: Pair<Float, Float>?,
-    val maxRangeB: Pair<Float, Float>?
+    val maxRangeB: Pair<Float, Float>?,
+    // Last rep's raw positions for ghost indicators
+    val lastRepTopA: Float? = null,
+    val lastRepTopB: Float? = null,
+    val lastRepBottomA: Float? = null,
+    val lastRepBottomB: Float? = null
 ) {
-    val rangeA: Float?
-        get() = if (minPosA != null && maxPosA != null) max(maxPosA!! - minPosA!!, 0f) else null
-    val rangeB: Float?
-        get() = if (minPosB != null && maxPosB != null) max(maxPosB!! - minPosB!!, 0f) else null
+    /**
+     * Check if position is in danger zone (within 5% of ROM minimum).
+     * Used to trigger red color warning on position bars.
+     *
+     * @param posA Current position A in mm
+     * @param posB Current position B in mm
+     * @param minRangeThreshold Minimum ROM range required to activate danger zone check
+     * @return true if either cable is in danger zone
+     */
+    fun isInDangerZone(posA: Float, posB: Float, minRangeThreshold: Float = 50f): Boolean {
+        // Check if position A is in danger zone (within 5% of minimum)
+        if (minPosA != null && maxPosA != null) {
+            val range = maxPosA - minPosA
+            if (range > minRangeThreshold) {
+                val threshold = minPosA + (range * 0.05f)
+                if (posA <= threshold) return true
+            }
+        }
+
+        // Check if position B is in danger zone (within 5% of minimum)
+        if (minPosB != null && maxPosB != null) {
+            val range = maxPosB - minPosB
+            if (range > minRangeThreshold) {
+                val threshold = minPosB + (range * 0.05f)
+                if (posB <= threshold) return true
+            }
+        }
+
+        return false
+    }
 }

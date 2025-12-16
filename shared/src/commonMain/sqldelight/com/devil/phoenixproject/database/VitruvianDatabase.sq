@@ -413,10 +413,21 @@ insertRecord:
 INSERT INTO PersonalRecord (exerciseId, exerciseName, weight, reps, oneRepMax, achievedAt, workoutMode, prType, volume)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
--- Upsert PR (insert or replace)
+-- Upsert PR (insert or replace) - requires ID
 upsertRecord:
 INSERT OR REPLACE INTO PersonalRecord (id, exerciseId, exerciseName, weight, reps, oneRepMax, achievedAt, workoutMode, prType, volume)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Upsert PR by unique key (exerciseId, workoutMode, prType) - no ID required
+-- Uses INSERT OR REPLACE which replaces on unique index conflict (idx_pr_unique)
+upsertPR:
+INSERT OR REPLACE INTO PersonalRecord (exerciseId, exerciseName, weight, reps, oneRepMax, achievedAt, workoutMode, prType, volume)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Delete PR by unique key (for upsert fallback)
+deletePRByKey:
+DELETE FROM PersonalRecord
+WHERE exerciseId = ? AND workoutMode = ? AND prType = ?;
 
 -- Get all PR IDs for duplicate checking during import
 selectAllPRIds:

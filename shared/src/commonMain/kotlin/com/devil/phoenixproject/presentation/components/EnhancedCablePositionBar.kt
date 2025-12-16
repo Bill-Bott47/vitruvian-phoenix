@@ -38,6 +38,7 @@ enum class MovementPhase {
  * - **ROM Zone**: Highlighted zone showing the target range of motion
  * - **Phase-Reactive Coloring**: Green for concentric (lifting), Orange for eccentric (lowering)
  * - **Ghost Indicators**: Faint marks showing the peak/bottom of the last rep
+ * - **Danger Zone**: Red indicator when user drops below ROM (deload/spotter trigger)
  * - **Glow Effect**: Radial gradient around the current position indicator
  * - **Smooth Animations**: Fluid position and color transitions
  *
@@ -49,6 +50,7 @@ enum class MovementPhase {
  * @param ghostMin Ghost marker at last rep's minimum extent
  * @param ghostMax Ghost marker at last rep's maximum extent
  * @param isActive Whether the cable is actively being used
+ * @param isDanger Whether the cable is in danger zone (below ROM minimum)
  */
 @Composable
 fun EnhancedCablePositionBar(
@@ -60,6 +62,7 @@ fun EnhancedCablePositionBar(
     ghostMin: Float? = null,
     ghostMax: Float? = null,
     isActive: Boolean = true,
+    isDanger: Boolean = false,  // Danger zone - user dropped below ROM
     modifier: Modifier = Modifier
 ) {
     // Determine movement phase from velocity
@@ -76,11 +79,13 @@ fun EnhancedCablePositionBar(
     val eccentricColor = Color(0xFFFF7043)   // Orange-red
     val staticColor = Color(0xFF90CAF9)      // Light blue
     val inactiveColor = Color(0xFF616161)    // Grey
+    val dangerColor = Color(0xFFFF1744)      // Bright red for danger zone
 
-    // Animate color based on phase
+    // Animate color based on phase (danger zone overrides all)
     val activeColor by animateColorAsState(
         targetValue = when {
             !isActive -> inactiveColor
+            isDanger -> dangerColor  // Danger zone takes priority
             phase == MovementPhase.CONCENTRIC -> concentricColor
             phase == MovementPhase.ECCENTRIC -> eccentricColor
             else -> staticColor

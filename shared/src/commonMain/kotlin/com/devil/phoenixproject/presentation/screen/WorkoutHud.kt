@@ -16,15 +16,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devil.phoenixproject.data.repository.ExerciseRepository
 import com.devil.phoenixproject.domain.model.*
 import com.devil.phoenixproject.presentation.components.CircularForceGauge
 import com.devil.phoenixproject.presentation.components.EnhancedCablePositionBar
-import com.devil.phoenixproject.presentation.components.VideoPlayer
-import com.devil.phoenixproject.ui.theme.Spacing
 
 /**
  * Workout Heads-Up Display (HUD)
@@ -137,6 +134,10 @@ fun WorkoutHud(
 
             // PERIPHERAL VISION BARS (Pinned to edges, overlaying the pager)
             if (metric != null) {
+                // Calculate danger zone status for both cables
+                val isDangerA = repRanges?.isInDangerZone(metric.positionA, metric.positionB) ?: false
+                val isDangerB = isDangerA  // Same check applies to both (symmetric)
+
                 // Left Bar
                 EnhancedCablePositionBar(
                     label = "L",
@@ -144,14 +145,18 @@ fun WorkoutHud(
                     velocity = metric.velocityA,
                     minPosition = repRanges?.minPosA,
                     maxPosition = repRanges?.maxPosA,
-                    isActive = metric.positionA > 0,
+                    // Ghost indicators: use last rep's rolling average positions
+                    ghostMin = repRanges?.lastRepBottomA,
+                    ghostMax = repRanges?.lastRepTopA,
+                    // isActive defaults to true - bars only shown during Active state anyway
+                    isDanger = isDangerA,
                     modifier = Modifier
                         .align(Alignment.CenterStart)
                         .width(24.dp) // Thinner for HUD
                         .fillMaxHeight(0.6f)
                         .padding(start = 4.dp)
                 )
-                
+
                 // Right Bar
                 EnhancedCablePositionBar(
                     label = "R",
@@ -159,7 +164,11 @@ fun WorkoutHud(
                     velocity = metric.velocityB,
                     minPosition = repRanges?.minPosB,
                     maxPosition = repRanges?.maxPosB,
-                    isActive = metric.positionB > 0,
+                    // Ghost indicators: use last rep's rolling average positions
+                    ghostMin = repRanges?.lastRepBottomB,
+                    ghostMax = repRanges?.lastRepTopB,
+                    // isActive defaults to true - bars only shown during Active state anyway
+                    isDanger = isDangerB,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .width(24.dp) // Thinner for HUD

@@ -18,7 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -28,7 +27,6 @@ import com.devil.phoenixproject.domain.model.*
 import com.devil.phoenixproject.domain.usecase.RepRanges
 import com.devil.phoenixproject.presentation.components.AutoStartOverlay
 import com.devil.phoenixproject.presentation.components.AutoStopOverlay
-import com.devil.phoenixproject.presentation.components.CompactExerciseNavigator
 import com.devil.phoenixproject.presentation.components.EnhancedCablePositionBar
 import com.devil.phoenixproject.presentation.components.ExerciseNavigator
 import com.devil.phoenixproject.presentation.components.HapticFeedbackEffect
@@ -194,13 +192,20 @@ fun WorkoutTab(
         // Left edge bar (Cable A / Left hand) - Enhanced with phase-reactive coloring
         // Uses safeGestures inset to avoid overlap with system back gesture areas
         if (showPositionBars && currentMetric != null) {
+            // Calculate danger zone status
+            val isDanger = repRanges?.isInDangerZone(currentMetric.positionA, currentMetric.positionB) ?: false
+
             EnhancedCablePositionBar(
                 label = "L",
                 currentPosition = currentMetric.positionA,
                 velocity = currentMetric.velocityA,
                 minPosition = repRanges?.minPosA,
                 maxPosition = repRanges?.maxPosA,
-                isActive = currentMetric.positionA > 0,
+                // Ghost indicators: use last rep's positions
+                ghostMin = repRanges?.lastRepBottomA,
+                ghostMax = repRanges?.lastRepTopA,
+                // isActive defaults to true - bars only shown during Active state anyway
+                isDanger = isDanger,
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .windowInsetsPadding(WindowInsets.safeGestures.only(WindowInsetsSides.Start))
@@ -213,13 +218,20 @@ fun WorkoutTab(
         // Right edge bar (Cable B / Right hand) - Enhanced with phase-reactive coloring
         // Uses safeGestures inset to avoid overlap with system back gesture areas
         if (showPositionBars && currentMetric != null) {
+            // Calculate danger zone status
+            val isDanger = repRanges?.isInDangerZone(currentMetric.positionA, currentMetric.positionB) ?: false
+
             EnhancedCablePositionBar(
                 label = "R",
                 currentPosition = currentMetric.positionB,
                 velocity = currentMetric.velocityB,
                 minPosition = repRanges?.minPosB,
                 maxPosition = repRanges?.maxPosB,
-                isActive = currentMetric.positionB > 0,
+                // Ghost indicators: use last rep's positions
+                ghostMin = repRanges?.lastRepBottomB,
+                ghostMax = repRanges?.lastRepTopB,
+                // isActive defaults to true - bars only shown during Active state anyway
+                isDanger = isDanger,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .windowInsetsPadding(WindowInsets.safeGestures.only(WindowInsetsSides.End))
