@@ -25,4 +25,17 @@ object DataColors {
 
     /** Power output / wattage - Cyan */
     val Power = Color(0xFF06B6D4)
+
+    // Workout metrics chart colors (for WorkoutMetricsDetailChart)
+    /** Load A (left cable) - Blue */
+    val LoadA = Color(0xFF3B82F6)
+
+    /** Load B (right cable) - Orange */
+    val LoadB = Color(0xFFF97316)
+
+    /** Position A (left cable position) - Green */
+    val PositionA = Color(0xFF22C55E)
+
+    /** Position B (right cable position) - Purple */
+    val PositionB = Color(0xFFA855F7)
 }

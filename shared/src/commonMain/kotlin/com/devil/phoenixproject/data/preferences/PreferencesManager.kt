@@ -1,10 +1,13 @@
 package com.devil.phoenixproject.data.preferences
 
 import com.devil.phoenixproject.domain.model.WeightUnit
+import com.russhwolf.settings.Settings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /**
  * User preferences data class
@@ -102,7 +105,7 @@ data class JustLiftDefaults(
 
 /**
  * Preferences Manager interface
- * TODO: Implement with multiplatform-settings for actual persistence
+ * Implemented using multiplatform-settings for persistent storage
  */
 interface PreferencesManager {
     val preferencesFlow: StateFlow<UserPreferences>
@@ -124,7 +127,124 @@ interface PreferencesManager {
 }
 
 /**
- * Stub Preferences Manager for compilation
+ * Multiplatform Settings-based Preferences Manager
+ * Provides persistent storage using platform-native mechanisms:
+ * - Android: SharedPreferences
+ * - iOS: NSUserDefaults
+ */
+class SettingsPreferencesManager(
+    private val settings: Settings
+) : PreferencesManager {
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
+
+    companion object {
+        // Preference keys
+        private const val KEY_WEIGHT_UNIT = "weight_unit"
+        private const val KEY_AUTOPLAY_ENABLED = "autoplay_enabled"
+        private const val KEY_STOP_AT_TOP = "stop_at_top"
+        private const val KEY_VIDEO_PLAYBACK = "video_playback"
+        private const val KEY_BEEPS_ENABLED = "beeps_enabled"
+        private const val KEY_COLOR_SCHEME = "color_scheme"
+        private const val KEY_JUST_LIFT_DEFAULTS = "just_lift_defaults"
+        private const val KEY_PREFIX_EXERCISE = "exercise_defaults_"
+    }
+
+    private val _preferencesFlow = MutableStateFlow(loadPreferences())
+    override val preferencesFlow: StateFlow<UserPreferences> = _preferencesFlow
+
+    private fun loadPreferences(): UserPreferences {
+        return UserPreferences(
+            weightUnit = settings.getStringOrNull(KEY_WEIGHT_UNIT)?.let {
+                WeightUnit.entries.find { unit -> unit.name == it }
+            } ?: WeightUnit.LB,
+            autoplayEnabled = settings.getBoolean(KEY_AUTOPLAY_ENABLED, true),
+            stopAtTop = settings.getBoolean(KEY_STOP_AT_TOP, false),
+            enableVideoPlayback = settings.getBoolean(KEY_VIDEO_PLAYBACK, true),
+            beepsEnabled = settings.getBoolean(KEY_BEEPS_ENABLED, true),
+            colorScheme = settings.getInt(KEY_COLOR_SCHEME, 0)
+        )
+    }
+
+    private fun updateAndEmit(update: UserPreferences.() -> UserPreferences) {
+        _preferencesFlow.value = _preferencesFlow.value.update()
+    }
+
+    override suspend fun setWeightUnit(unit: WeightUnit) {
+        settings.putString(KEY_WEIGHT_UNIT, unit.name)
+        updateAndEmit { copy(weightUnit = unit) }
+    }
+
+    override suspend fun setAutoplayEnabled(enabled: Boolean) {
+        settings.putBoolean(KEY_AUTOPLAY_ENABLED, enabled)
+        updateAndEmit { copy(autoplayEnabled = enabled) }
+    }
+
+    override suspend fun setStopAtTop(enabled: Boolean) {
+        settings.putBoolean(KEY_STOP_AT_TOP, enabled)
+        updateAndEmit { copy(stopAtTop = enabled) }
+    }
+
+    override suspend fun setEnableVideoPlayback(enabled: Boolean) {
+        settings.putBoolean(KEY_VIDEO_PLAYBACK, enabled)
+        updateAndEmit { copy(enableVideoPlayback = enabled) }
+    }
+
+    override suspend fun setBeepsEnabled(enabled: Boolean) {
+        settings.putBoolean(KEY_BEEPS_ENABLED, enabled)
+        updateAndEmit { copy(beepsEnabled = enabled) }
+    }
+
+    override suspend fun setColorScheme(scheme: Int) {
+        settings.putInt(KEY_COLOR_SCHEME, scheme)
+        updateAndEmit { copy(colorScheme = scheme) }
+    }
+
+    override suspend fun getSingleExerciseDefaults(exerciseId: String, cableConfig: String): SingleExerciseDefaults? {
+        val key = "$KEY_PREFIX_EXERCISE${exerciseId}_$cableConfig"
+        val jsonString = settings.getStringOrNull(key) ?: return null
+        return try {
+            json.decodeFromString<SingleExerciseDefaults>(jsonString)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    override suspend fun saveSingleExerciseDefaults(defaults: SingleExerciseDefaults) {
+        val key = "$KEY_PREFIX_EXERCISE${defaults.exerciseId}_${defaults.cableConfig}"
+        settings.putString(key, json.encodeToString(defaults))
+    }
+
+    override suspend fun clearAllSingleExerciseDefaults() {
+        // Get all keys and remove those starting with exercise prefix
+        settings.keys.filter { it.startsWith(KEY_PREFIX_EXERCISE) }.forEach { key ->
+            settings.remove(key)
+        }
+    }
+
+    override suspend fun getJustLiftDefaults(): JustLiftDefaults {
+        val jsonString = settings.getStringOrNull(KEY_JUST_LIFT_DEFAULTS) ?: return JustLiftDefaults()
+        return try {
+            json.decodeFromString<JustLiftDefaults>(jsonString)
+        } catch (e: Exception) {
+            JustLiftDefaults()
+        }
+    }
+
+    override suspend fun saveJustLiftDefaults(defaults: JustLiftDefaults) {
+        settings.putString(KEY_JUST_LIFT_DEFAULTS, json.encodeToString(defaults))
+    }
+
+    override suspend fun clearJustLiftDefaults() {
+        settings.remove(KEY_JUST_LIFT_DEFAULTS)
+    }
+}
+
+/**
+ * Stub Preferences Manager for testing or when settings unavailable
  */
 class StubPreferencesManager : PreferencesManager {
     private val _preferencesFlow = MutableStateFlow(UserPreferences())

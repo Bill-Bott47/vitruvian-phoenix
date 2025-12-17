@@ -773,6 +773,7 @@ fun SettingsTab(
     stopAtTop: Boolean,
     enableVideoPlayback: Boolean,
     darkModeEnabled: Boolean,
+    selectedColorSchemeIndex: Int = 0,
     onWeightUnitChange: (WeightUnit) -> Unit,
     onAutoplayChange: (Boolean) -> Unit,
     onStopAtTopChange: (Boolean) -> Unit,
@@ -1171,7 +1172,7 @@ fun SettingsTab(
                 colorSchemes.forEachIndexed { index, scheme ->
                     ColorSchemeChip(
                         scheme = scheme,
-                        isSelected = false, // TODO: Add selected state tracking if needed
+                        isSelected = index == selectedColorSchemeIndex,
                         onClick = { onColorSchemeChange(index) }
                     )
                 }

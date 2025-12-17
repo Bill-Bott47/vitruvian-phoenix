@@ -6,20 +6,47 @@ import android.os.Build
  * Android implementation of DeviceInfo.
  * Uses android.os.Build for device information.
  *
- * Note: App version info is from shared Constants.
- * For full BuildConfig integration, configure in androidApp module.
+ * Note: App version info requires initialization from the app module via [initialize].
+ * Call [initialize] from your Application.onCreate() with BuildConfig values.
  */
 actual object DeviceInfo {
+
+    // ==================== Initialized Build Info ====================
+    // These are set via initialize() from the app module's BuildConfig
+
+    private var _appVersionCode: Int = 1
+    private var _isDebugBuild: Boolean = false
+    private var _initialized: Boolean = false
+
+    /**
+     * Initialize DeviceInfo with values from BuildConfig.
+     * Call this from Application.onCreate():
+     *
+     * ```kotlin
+     * DeviceInfo.initialize(
+     *     versionCode = BuildConfig.VERSION_CODE,
+     *     isDebug = BuildConfig.DEBUG
+     * )
+     * ```
+     */
+    fun initialize(versionCode: Int, isDebug: Boolean) {
+        _appVersionCode = versionCode
+        _isDebugBuild = isDebug
+        _initialized = true
+    }
 
     // ==================== App Build Info ====================
 
     actual val appVersionName: String = Constants.APP_VERSION
 
-    actual val appVersionCode: Int = 1  // TODO: Integrate with BuildConfig
+    actual val appVersionCode: Int
+        get() = _appVersionCode
 
-    actual val isDebugBuild: Boolean = false  // TODO: Integrate with BuildConfig.DEBUG
+    actual val isDebugBuild: Boolean
+        get() = _isDebugBuild
 
-    actual val buildType: String = if (isDebugBuild) "debug" else "release"
+    actual val buildType: String
+        get() = if (_isDebugBuild) "debug" else "release"
 
     // ==================== Android Device Info ====================
 

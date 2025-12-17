@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.ExpandLess
@@ -217,7 +218,7 @@ private fun OneRepMaxCard(
                     ) {
                         Icon(
                             if (isPositive) Icons.AutoMirrored.Filled.TrendingUp
-                            else Icons.AutoMirrored.Filled.TrendingUp, // TODO: TrendingDown
+                            else Icons.AutoMirrored.Filled.TrendingDown,
                             contentDescription = null,
                             tint = if (isPositive) Color(0xFF10B981) else Color(0xFFEF4444),
                             modifier = Modifier.size(20.dp)

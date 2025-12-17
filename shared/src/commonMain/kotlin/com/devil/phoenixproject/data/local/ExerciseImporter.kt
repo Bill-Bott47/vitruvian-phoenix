@@ -2,6 +2,12 @@ package com.devil.phoenixproject.data.local
 
 import co.touchlab.kermit.Logger
 import com.devil.phoenixproject.database.VitruvianDatabase
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
@@ -222,23 +228,134 @@ class ExerciseImporter(
         }
     }
 
+    companion object {
+        // GitHub raw content URL for exercise data
+        // Update this to point to your actual exercise data repository
+        private const val GITHUB_EXERCISES_URL =
+            "https://raw.githubusercontent.com/VitruvianFitness/exercise-library/main/exercise_dump.json"
+    }
+
     /**
      * Update exercise library from GitHub
+     * Fetches the latest exercise data and updates the local database
      * @return Result with count of exercises updated, or error
      */
     suspend fun updateFromGitHub(): Result<Int> = withContext(Dispatchers.IO) {
-        try {
-            Logger.d { "Updating exercise library from GitHub..." }
+        val client = HttpClient {
+            install(ContentNegotiation) {
+                json(json)
+            }
+        }
 
-            // For KMP, we'll use expect/actual for HTTP client
-            // For now, just return success with 0 (not implemented)
-            // TODO: Implement with Ktor client for proper KMP HTTP
-            Logger.w { "GitHub update not yet implemented for KMP" }
-            Result.success(0)
+        try {
+            Logger.d { "Fetching exercise library from GitHub..." }
+
+            val response: HttpResponse = client.get(GITHUB_EXERCISES_URL)
+
+            if (response.status.value !in 200..299) {
+                Logger.e { "GitHub returned status ${response.status}" }
+                return@withContext Result.failure(
+                    Exception("Failed to fetch exercises: HTTP ${response.status.value}")
+                )
+            }
+
+            val jsonContent = response.bodyAsText()
+            Logger.d { "Received ${jsonContent.length} bytes from GitHub" }
+
+            val exercises: List<ExerciseJson> = json.decodeFromString(jsonContent)
+            Logger.d { "Parsed ${exercises.size} exercises from GitHub" }
+
+            var updatedCount = 0
+
+            exercises.forEach { exercise ->
+                // Skip archived exercises
+                if (exercise.archived != null) {
+                    return@forEach
+                }
+
+                try {
+                    // Use the full insertExercise query with all parameters
+                    queries.insertExercise(
+                        id = exercise.id,
+                        name = exercise.name,
+                        description = exercise.description,
+                        created = 0L, // Default to 0, as date parsing is complex
+                        muscleGroup = exercise.muscleGroups?.firstOrNull() ?: "Other",
+                        muscleGroups = exercise.muscleGroups?.joinToString(",") ?: "",
+                        muscles = exercise.muscles?.joinToString(","),
+                        equipment = exercise.equipment?.joinToString(",") ?: "",
+                        movement = exercise.movement,
+                        sidedness = exercise.sidedness,
+                        grip = exercise.grip,
+                        gripWidth = exercise.gripWidth,
+                        minRepRange = exercise.range?.minimum,
+                        popularity = exercise.popularity ?: 0.0,
+                        archived = if (exercise.archived != null) 1L else 0L,
+                        isFavorite = 0L,
+                        isCustom = 0L,
+                        timesPerformed = 0L,
+                        lastPerformed = null,
+                        aliases = exercise.aliases?.joinToString(","),
+                        defaultCableConfig = mapSidednessToCableConfig(exercise.sidedness),
+                        one_rep_max_kg = null
+                    )
+
+                    // Insert videos
+                    exercise.videos?.forEach { video ->
+                        try {
+                            queries.insertVideo(
+                                exerciseId = exercise.id,
+                                angle = video.angle ?: "front",
+                                videoUrl = video.video,
+                                thumbnailUrl = video.thumbnail,
+                                isTutorial = 0L
+                            )
+                        } catch (_: Exception) {
+                            // Video already exists, ignore
+                        }
+                    }
+
+                    // Insert tutorial if available
+                    exercise.tutorial?.let { tutorial ->
+                        try {
+                            queries.insertVideo(
+                                exerciseId = exercise.id,
+                                angle = "tutorial",
+                                videoUrl = tutorial.video,
+                                thumbnailUrl = tutorial.thumbnail,
+                                isTutorial = 1L
+                            )
+                        } catch (_: Exception) {
+                            // Tutorial already exists, ignore
+                        }
+                    }
+
+                    updatedCount++
+                } catch (e: Exception) {
+                    Logger.w(e) { "Failed to update exercise ${exercise.name}: ${e.message}" }
+                }
+            }
+
+            Logger.d { "Successfully updated $updatedCount exercises from GitHub" }
+            Result.success(updatedCount)
 
         } catch (e: Exception) {
-            Logger.e(e) { "Failed to update from GitHub" }
+            Logger.e(e) { "Failed to update from GitHub: ${e.message}" }
             Result.failure(e)
+        } finally {
+            client.close()
+        }
+    }
+
+    /**
+     * Map sidedness field to cable configuration
+     */
+    private fun mapSidednessToCableConfig(sidedness: String?): String {
+        return when (sidedness?.lowercase()) {
+            "single", "unilateral" -> "SINGLE"
+            "double", "bilateral" -> "DOUBLE"
+            "alternating" -> "EITHER"
+            else -> "DOUBLE" // Safe default
         }
     }
 }

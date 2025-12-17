@@ -29,10 +29,7 @@ import androidx.compose.ui.unit.dp
  * Custom gauge chart for goal progress visualization
  * Shows progress from 0% to 100% with Material 3 colors
  *
- * TODO: The original uses Android Canvas nativeCanvas for text rendering.
- * For KMP, need to implement text rendering differently:
- * - Option 1: Use Compose Text with positioning
- * - Option 2: Implement expect/actual for platform-specific text rendering
+ * Uses Compose Text overlaid on Canvas for KMP-compatible text rendering.
  */
 @Composable
 fun GaugeChart(
@@ -68,78 +65,84 @@ fun GaugeChart(
     val surfaceContainerHighestColor = MaterialTheme.colorScheme.surfaceContainerHighest
 
     Column(modifier = modifier) {
-        Canvas(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(200.dp)
-                .padding(16.dp)
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
         ) {
-            val centerX = size.width / 2
-            val centerY = size.height * 0.8f
-            val radius = size.width.coerceAtMost(size.height * 1.2f) / 2.5f
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val centerX = size.width / 2
+                val centerY = size.height * 0.8f
+                val radius = size.width.coerceAtMost(size.height * 1.2f) / 2.5f
 
-            // Background arc
-            drawArc(
-                color = surfaceContainerHighestColor,
-                startAngle = 180f,
-                sweepAngle = 180f,
-                useCenter = false,
-                topLeft = Offset(centerX - radius, centerY - radius),
-                size = Size(radius * 2, radius * 2),
-                style = Stroke(
-                    width = 24.dp.toPx(),
-                    cap = StrokeCap.Round
+                // Background arc
+                drawArc(
+                    color = surfaceContainerHighestColor,
+                    startAngle = 180f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = Offset(centerX - radius, centerY - radius),
+                    size = Size(radius * 2, radius * 2),
+                    style = Stroke(
+                        width = 24.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
                 )
-            )
 
-            // Progress arc
-            drawArc(
-                color = gaugeColor,
-                startAngle = 180f,
-                sweepAngle = 180f * animatedProgress,
-                useCenter = false,
-                topLeft = Offset(centerX - radius, centerY - radius),
-                size = Size(radius * 2, radius * 2),
-                style = Stroke(
-                    width = 24.dp.toPx(),
-                    cap = StrokeCap.Round
+                // Progress arc
+                drawArc(
+                    color = gaugeColor,
+                    startAngle = 180f,
+                    sweepAngle = 180f * animatedProgress,
+                    useCenter = false,
+                    topLeft = Offset(centerX - radius, centerY - radius),
+                    size = Size(radius * 2, radius * 2),
+                    style = Stroke(
+                        width = 24.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
                 )
-            )
 
-            // Gradient overlay
-            drawArc(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        gaugeColor.copy(alpha = 0.8f),
-                        gaugeColor.copy(alpha = 0.4f)
+                // Gradient overlay
+                drawArc(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            gaugeColor.copy(alpha = 0.8f),
+                            gaugeColor.copy(alpha = 0.4f)
+                        ),
+                        start = Offset(centerX - radius, centerY),
+                        end = Offset(centerX + radius, centerY)
                     ),
-                    start = Offset(centerX - radius, centerY),
-                    end = Offset(centerX + radius, centerY)
-                ),
-                startAngle = 180f,
-                sweepAngle = 180f * animatedProgress,
-                useCenter = false,
-                topLeft = Offset(centerX - radius, centerY - radius),
-                size = Size(radius * 2, radius * 2),
-                style = Stroke(
-                    width = 8.dp.toPx(),
-                    cap = StrokeCap.Round
+                    startAngle = 180f,
+                    sweepAngle = 180f * animatedProgress,
+                    useCenter = false,
+                    topLeft = Offset(centerX - radius, centerY - radius),
+                    size = Size(radius * 2, radius * 2),
+                    style = Stroke(
+                        width = 8.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
                 )
-            )
+            }
 
-            // TODO: Add center text using Compose Text instead of native canvas
+            // Center text overlaid on canvas (positioned in lower portion where arc center is)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.offset(y = 24.dp)
+            ) {
+                Text(
+                    text = if (showPercentage) "$percentage%" else "${currentValue.toInt()}/${targetValue.toInt()}",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
 
         // Label text below gauge
-        Text(
-            text = if (showPercentage) "$percentage%" else "${currentValue.toInt()}/${targetValue.toInt()}",
-            style = MaterialTheme.typography.displaySmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-
         Text(
             text = label,
             style = MaterialTheme.typography.titleLarge.copy(

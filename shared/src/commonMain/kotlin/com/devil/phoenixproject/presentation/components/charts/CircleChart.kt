@@ -3,8 +3,13 @@ package com.devil.phoenixproject.presentation.components.charts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.min
+import kotlin.math.sqrt
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PieChart
@@ -82,8 +87,40 @@ fun MuscleGroupCircleChart(
                 .aspectRatio(1f)
                 .then(
                     if (onSegmentClick != null) {
-                        Modifier.clickable {
-                            // TODO: Implement segment click detection
+                        Modifier.pointerInput(data, normalizedData) {
+                            detectTapGestures { tapOffset ->
+                                val center = Offset(size.width / 2f, size.height / 2f)
+                                val radius = min(size.width, size.height).toFloat() / 2f
+                                val innerRadius = radius * 0.4f
+                                val strokeWidth = 24.dp.toPx()
+
+                                // Calculate distance from center
+                                val dx = tapOffset.x - center.x
+                                val dy = tapOffset.y - center.y
+                                val distance = sqrt(dx * dx + dy * dy)
+
+                                // Check if tap is within the donut ring
+                                val outerEdge = radius
+                                val innerEdge = innerRadius
+                                if (distance >= innerEdge && distance <= outerEdge + strokeWidth / 2) {
+                                    // Calculate angle (convert to degrees, adjust for starting at top)
+                                    var angle = atan2(dy, dx) * (180.0 / PI).toFloat()
+                                    angle = (angle + 90f + 360f) % 360f // Adjust to start from top
+
+                                    // Find which segment was tapped
+                                    var cumulativeAngle = 0f
+                                    for ((label, percentage) in normalizedData) {
+                                        val sweepAngle = percentage * 360f
+                                        if (angle >= cumulativeAngle && angle < cumulativeAngle + sweepAngle) {
+                                            // Found the segment - get original value from data
+                                            val originalValue = data.find { it.first == label }?.second ?: percentage * total
+                                            onSegmentClick(label, originalValue)
+                                            break
+                                        }
+                                        cumulativeAngle += sweepAngle
+                                    }
+                                }
+                            }
                         }
                     } else {
                         Modifier

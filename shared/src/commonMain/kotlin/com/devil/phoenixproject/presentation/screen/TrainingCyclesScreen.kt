@@ -86,6 +86,8 @@ fun TrainingCyclesScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf<TrainingCycle?>(null) }
     var cycleProgress by remember { mutableStateOf<Map<String, CycleProgress>>(emptyMap()) }
     var creationState by remember { mutableStateOf<CycleCreationState>(CycleCreationState.Idle) }
+    var showWarningDialog by remember { mutableStateOf<List<String>?>(null) }
+    var showErrorDialog by remember { mutableStateOf<String?>(null) }
 
     // Load progress for all cycles
     LaunchedEffect(cycles) {
@@ -307,7 +309,7 @@ fun TrainingCyclesScreen(
                             // 5. Show warnings if any exercises weren't found
                             if (conversionResult.warnings.isNotEmpty()) {
                                 Logger.w { "Some exercises not found: ${conversionResult.warnings}" }
-                                // TODO: Could show a dialog with warnings here
+                                showWarningDialog = conversionResult.warnings
                             }
 
                             // 6. Navigate back or reset state
@@ -316,7 +318,7 @@ fun TrainingCyclesScreen(
                         } catch (e: Exception) {
                             Logger.e(e) { "Failed to create cycle from template" }
                             creationState = CycleCreationState.Idle
-                            // TODO: Show error to user
+                            showErrorDialog = e.message ?: "Failed to create training cycle"
                         }
                     }
                 },
@@ -354,6 +356,74 @@ fun TrainingCyclesScreen(
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirmDialog = null }) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Warning Dialog - shows when some exercises weren't found
+    showWarningDialog?.let { warnings ->
+        AlertDialog(
+            onDismissRequest = { showWarningDialog = null },
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary
+                )
+            },
+            title = { Text("Exercises Not Found") },
+            text = {
+                Column {
+                    Text(
+                        "The cycle was created, but the following exercises weren't found in your library:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    warnings.forEach { warning ->
+                        Text(
+                            "• $warning",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "You may need to add these exercises or update the routines manually.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showWarningDialog = null }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    // Error Dialog - shows when cycle creation fails
+    showErrorDialog?.let { errorMessage ->
+        AlertDialog(
+            onDismissRequest = { showErrorDialog = null },
+            icon = {
+                Icon(
+                    Icons.Default.Error,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Error") },
+            text = {
+                Text(
+                    "Failed to create training cycle: $errorMessage",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showErrorDialog = null }) {
+                    Text("OK")
                 }
             }
         )

@@ -75,8 +75,10 @@ kotlin {
                 implementation(libs.coil.compose)
                 implementation(libs.coil.network.ktor)
 
-                // Ktor Client Core (for Coil network)
+                // Ktor Client (for Coil network and HTTP API)
                 implementation(libs.ktor.client.core)
+                implementation("io.ktor:ktor-client-content-negotiation:3.1.1")
+                implementation("io.ktor:ktor-serialization-kotlinx-json:3.1.1")
 
                 // BLE - Kable (Multiplatform)
                 implementation(libs.kable.core)
@@ -110,6 +112,9 @@ kotlin {
 
                 // Ktor OkHttp engine for Android
                 implementation(libs.ktor.client.okhttp)
+
+                // Charts - Vico (Android only)
+                implementation(libs.vico.charts)
 
                 // Compose Preview Tooling (for @Preview in shared module)
                 implementation(compose.uiTooling)
