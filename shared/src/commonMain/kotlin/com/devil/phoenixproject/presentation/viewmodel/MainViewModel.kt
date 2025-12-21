@@ -2689,7 +2689,7 @@ data class JustLiftDefaults(
         50 -> EccentricLoad.LOAD_50
         75 -> EccentricLoad.LOAD_75
         100 -> EccentricLoad.LOAD_100
-        125 -> EccentricLoad.LOAD_125
+        120 -> EccentricLoad.LOAD_120
         150 -> EccentricLoad.LOAD_150
         else -> EccentricLoad.LOAD_100
     }
