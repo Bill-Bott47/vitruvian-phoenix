@@ -876,7 +876,9 @@ class MainViewModel constructor(
     fun setAutoplayEnabled(enabled: Boolean) {
         viewModelScope.launch { preferencesManager.setAutoplayEnabled(enabled) }
     }
-
+    fun setStallDetectionEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesManager.setStallDetectionEnabled(enabled) }
+    }
     fun setColorScheme(schemeIndex: Int) {
         viewModelScope.launch { bleRepository.setColorScheme(schemeIndex) }
     }
