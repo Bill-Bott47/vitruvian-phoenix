@@ -120,6 +120,12 @@ class MainViewModel constructor(
     private val _currentMetric = MutableStateFlow<WorkoutMetric?>(null)
     val currentMetric: StateFlow<WorkoutMetric?> = _currentMetric.asStateFlow()
 
+    // Current heuristic force (kgMax per cable) for Echo mode live display
+    // This is the actual measured force from the device's force telemetry
+    private val _currentHeuristicKgMax = MutableStateFlow(0f)
+    val currentHeuristicKgMax: StateFlow<Float> = _currentHeuristicKgMax.asStateFlow()
+    private var maxHeuristicKgMax = 0f // Track session maximum for history recording
+
     private val _workoutParameters = MutableStateFlow(
         WorkoutParameters(
             workoutType = WorkoutType.Program(ProgramMode.OldSchool),
@@ -152,7 +158,7 @@ class MainViewModel constructor(
     val workoutHistory: StateFlow<List<WorkoutSession>> = _workoutHistory.asStateFlow()
 
     // Top Bar Title State
-    private val _topBarTitle = MutableStateFlow("Vitruvian Project Phoenix")
+    private val _topBarTitle = MutableStateFlow("Project Phoenix")
     val topBarTitle: StateFlow<String> = _topBarTitle.asStateFlow()
 
     fun updateTopBarTitle(title: String) {
@@ -499,6 +505,28 @@ class MainViewModel constructor(
             bleRepository.metricsFlow.collect { metric ->
                 _currentMetric.value = metric
                 handleMonitorMetric(metric)
+            }
+        }
+
+        // Heuristic data collection for Echo mode force feedback (matching parent repo)
+        viewModelScope.launch {
+            bleRepository.heuristicData.collect { stats ->
+                if (stats != null && _workoutState.value is WorkoutState.Active) {
+                    // Track maximum force (kgMax) across both phases for Echo mode
+                    // kgMax is per-cable force in kg
+                    val concentricMax = stats.concentric.kgMax
+                    val eccentricMax = stats.eccentric.kgMax
+                    val currentMax = maxOf(concentricMax, eccentricMax)
+
+                    // Update live display value for Echo mode
+                    _currentHeuristicKgMax.value = currentMax
+
+                    // Track session maximum for history recording
+                    if (currentMax > maxHeuristicKgMax) {
+                        maxHeuristicKgMax = currentMax
+                        Logger.v("MainViewModel") { "Echo force telemetry: kgMax=$currentMax (concentric=$concentricMax, eccentric=$eccentricMax)" }
+                    }
+                }
             }
         }
     }
@@ -1175,7 +1203,7 @@ class MainViewModel constructor(
 
     fun formatWeight(kg: Float, unit: WeightUnit): String {
         val value = kgToDisplay(kg, unit)
-        return value.format(1)
+        return "${value.format(1)} ${unit.name.lowercase()}"
     }
 
     fun saveRoutine(routine: Routine) {

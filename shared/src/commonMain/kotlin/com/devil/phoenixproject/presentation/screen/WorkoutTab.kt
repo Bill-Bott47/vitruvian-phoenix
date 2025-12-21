@@ -60,6 +60,7 @@ fun WorkoutTab(
         connectionState = state.connectionState,
         workoutState = state.workoutState,
         currentMetric = state.currentMetric,
+        currentHeuristicKgMax = state.currentHeuristicKgMax,
         workoutParameters = state.workoutParameters,
         repCount = state.repCount,
         repRanges = state.repRanges,
@@ -109,6 +110,7 @@ fun WorkoutTab(
     connectionState: ConnectionState,
     workoutState: WorkoutState,
     currentMetric: WorkoutMetric?,
+    currentHeuristicKgMax: Float = 0f, // Echo mode: actual measured force per cable (kg)
     workoutParameters: WorkoutParameters,
     repCount: RepCount,
     repRanges: RepRanges?,
@@ -174,6 +176,7 @@ fun WorkoutTab(
             formatWeight = formatWeight,
             onUpdateParameters = onUpdateParameters,
             onStartNextExercise = onStartNextExercise,
+            currentHeuristicKgMax = currentHeuristicKgMax,
             modifier = modifier
         )
         return

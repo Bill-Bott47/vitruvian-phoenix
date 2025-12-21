@@ -29,6 +29,7 @@ fun ActiveWorkoutScreen(
 ) {
     val workoutState by viewModel.workoutState.collectAsState()
     val currentMetric by viewModel.currentMetric.collectAsState()
+    val currentHeuristicKgMax by viewModel.currentHeuristicKgMax.collectAsState()
     val workoutParameters by viewModel.workoutParameters.collectAsState()
     val repCount by viewModel.repCount.collectAsState()
     val repRanges by viewModel.repRanges.collectAsState()
@@ -142,7 +143,7 @@ fun ActiveWorkoutScreen(
 
     // Use the new state holder pattern for cleaner API
     val workoutUiState = remember(
-        connectionState, workoutState, currentMetric, workoutParameters,
+        connectionState, workoutState, currentMetric, currentHeuristicKgMax, workoutParameters,
         repCount, repRanges, autoStopState, weightUnit, enableVideoPlayback,
         loadedRoutine, currentExerciseIndex, userPreferences.autoplayEnabled
     ) {
@@ -150,6 +151,7 @@ fun ActiveWorkoutScreen(
             connectionState = connectionState,
             workoutState = workoutState,
             currentMetric = currentMetric,
+            currentHeuristicKgMax = currentHeuristicKgMax,
             workoutParameters = workoutParameters,
             repCount = repCount,
             repRanges = repRanges,

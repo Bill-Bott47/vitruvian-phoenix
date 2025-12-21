@@ -18,7 +18,6 @@ import androidx.navigation.navArgument
 import com.devil.phoenixproject.data.repository.ExerciseRepository
 import com.devil.phoenixproject.presentation.screen.*
 import com.devil.phoenixproject.presentation.viewmodel.MainViewModel
-import com.devil.phoenixproject.presentation.viewmodel.ProtocolTesterViewModel
 import com.devil.phoenixproject.ui.theme.ThemeMode
 import org.koin.compose.koinInject
 
@@ -252,7 +251,6 @@ fun NavGraph(
                 onColorSchemeChange = { viewModel.setColorScheme(it) },
                 onDeleteAllWorkouts = { viewModel.deleteAllWorkouts() },
                 onNavigateToConnectionLogs = { navController.navigate(NavigationRoutes.ConnectionLogs.route) },
-                onNavigateToProtocolTester = { navController.navigate(NavigationRoutes.ProtocolTester.route) },
                 onNavigateToBadges = { navController.navigate(NavigationRoutes.Badges.route) },
                 isAutoConnecting = isAutoConnecting,
                 connectionError = connectionError,
@@ -267,19 +265,6 @@ fun NavGraph(
             ConnectionLogsScreen(
                 onNavigateBack = { navController.popBackStack() },
                 mainViewModel = viewModel
-            )
-        }
-
-        // Protocol Tester screen - BLE diagnostics
-        composable(
-            route = NavigationRoutes.ProtocolTester.route,
-            enterTransition = { fadeIn(animationSpec = tween(200)) },
-            exitTransition = { fadeOut(animationSpec = tween(200)) }
-        ) {
-            val protocolTesterViewModel: ProtocolTesterViewModel = koinInject()
-            ProtocolTesterScreen(
-                viewModel = protocolTesterViewModel,
-                onNavigateBack = { navController.popBackStack() }
             )
         }
 

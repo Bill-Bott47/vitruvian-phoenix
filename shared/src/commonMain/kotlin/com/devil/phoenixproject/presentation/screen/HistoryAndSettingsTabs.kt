@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,6 +23,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.devil.phoenixproject.data.repository.ExerciseRepository
@@ -782,7 +784,6 @@ fun SettingsTab(
     onColorSchemeChange: (Int) -> Unit,
     onDeleteAllWorkouts: () -> Unit,
     onNavigateToConnectionLogs: () -> Unit = {},
-    onNavigateToProtocolTester: () -> Unit = {},
     onNavigateToBadges: () -> Unit = {},
     @Suppress("UNUSED_PARAMETER") // Reserved for future connecting overlay
     isAutoConnecting: Boolean = false,
@@ -809,6 +810,69 @@ fun SettingsTab(
         verticalArrangement = Arrangement.spacedBy(Spacing.medium)
     ) {
         // Header removed for global scaffold integration
+
+        // Donation Card - Material 3 Expressive
+        val uriHandler = LocalUriHandler.current
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(8.dp, RoundedCornerShape(20.dp)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
+            shape = RoundedCornerShape(20.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(Spacing.medium)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .shadow(8.dp, RoundedCornerShape(20.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(Color(0xFFFFD700), Color(0xFFFFA500))
+                                ),
+                                RoundedCornerShape(20.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Favorite,
+                            contentDescription = "Support the developer",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(Spacing.medium))
+                    Text(
+                        "Like My Work?",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Spacer(modifier = Modifier.height(Spacing.small))
+                Text(
+                    "This app is 100% free with no ads, but I graciously accept donations if you are so inclined!",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(Spacing.small))
+                Text(
+                    "ko-fi.com/vitruvianredux",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable {
+                        uriHandler.openUri("https://ko-fi.com/vitruvianredux")
+                    }
+                )
+            }
+        }
 
     // Weight Unit Section - Material 3 Expressive
     Card(
@@ -1406,38 +1470,6 @@ fun SettingsTab(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Spacer(modifier = Modifier.height(Spacing.medium))
-
-                OutlinedButton(
-                    onClick = onNavigateToProtocolTester,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.primary
-                    ),
-                    border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-                ) {
-                    Icon(
-                        Icons.Default.Science,
-                        contentDescription = "Protocol tester",
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(Spacing.small))
-                    Text(
-                        "Protocol Tester",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "Test different BLE initialization protocols to diagnose connection issues",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
 
@@ -1485,8 +1517,8 @@ fun SettingsTab(
                 )
             }
                 Spacer(modifier = Modifier.height(Spacing.small))
-                Text("Version: 0.6.0-beta", color = MaterialTheme.colorScheme.onSurface)
-                Text("Build: Beta 6", color = MaterialTheme.colorScheme.onSurface)
+                Text("Version: 0.1.0", color = MaterialTheme.colorScheme.onSurface)
+                Text("Build: beta 1", color = MaterialTheme.colorScheme.onSurface)
                 Spacer(modifier = Modifier.height(Spacing.small))
                 Text(
                     "Open source community project to control Vitruvian Trainer machines locally.",

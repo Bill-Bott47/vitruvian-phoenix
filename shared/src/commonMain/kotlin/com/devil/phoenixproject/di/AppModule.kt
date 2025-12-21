@@ -11,7 +11,6 @@ import com.devil.phoenixproject.domain.usecase.RepCounterFromMachine
 import com.devil.phoenixproject.domain.usecase.TemplateConverter
 import com.devil.phoenixproject.presentation.viewmodel.MainViewModel
 import com.devil.phoenixproject.presentation.viewmodel.ConnectionLogsViewModel
-import com.devil.phoenixproject.presentation.viewmodel.ProtocolTesterViewModel
 import com.devil.phoenixproject.presentation.viewmodel.GamificationViewModel
 import com.devil.phoenixproject.presentation.viewmodel.ThemeViewModel
 import org.koin.core.module.Module
@@ -55,7 +54,6 @@ val commonModule = module {
     // ViewModels
     factory { MainViewModel(get(), get(), get(), get(), get(), get(), get()) }
     factory { ConnectionLogsViewModel() }
-    factory { ProtocolTesterViewModel(get()) }
     factory { GamificationViewModel(get()) }
     // ThemeViewModel as singleton - app-wide theme state that must persist
     single { ThemeViewModel(get()) }

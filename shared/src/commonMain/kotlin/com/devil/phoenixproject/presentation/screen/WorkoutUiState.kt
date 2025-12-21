@@ -34,6 +34,7 @@ data class WorkoutUiState(
     val connectionState: ConnectionState = ConnectionState.Disconnected,
     val workoutState: WorkoutState = WorkoutState.Idle,
     val currentMetric: WorkoutMetric? = null,
+    val currentHeuristicKgMax: Float = 0f, // Echo mode: actual measured force per cable (kg)
     val workoutParameters: WorkoutParameters = WorkoutParameters(
         workoutType = WorkoutType.Program(ProgramMode.OldSchool),
         reps = 10

@@ -50,8 +50,11 @@ fun WorkoutHud(
     formatWeight: (Float, WeightUnit) -> String,
     onUpdateParameters: (WorkoutParameters) -> Unit,
     onStartNextExercise: () -> Unit,
+    currentHeuristicKgMax: Float = 0f, // Echo mode: actual measured force per cable (kg)
     modifier: Modifier = Modifier
 ) {
+    // Determine if we're in Echo mode
+    val isEchoMode = workoutParameters.workoutType is WorkoutType.Echo
     val pagerState = rememberPagerState(pageCount = { 3 })
     
     // Determine gradient for background based on phase?
@@ -93,7 +96,9 @@ fun WorkoutHud(
                         repCount = repCount,
                         weightUnit = weightUnit,
                         formatWeight = formatWeight,
-                        workoutParameters = workoutParameters
+                        workoutParameters = workoutParameters,
+                        isEchoMode = isEchoMode,
+                        echoForceKgMax = currentHeuristicKgMax
                     )
                     1 -> InstructionPage(
                         loadedRoutine = loadedRoutine,
@@ -282,7 +287,9 @@ private fun ExecutionPage(
     repCount: RepCount,
     weightUnit: WeightUnit,
     formatWeight: (Float, WeightUnit) -> String,
-    workoutParameters: WorkoutParameters
+    workoutParameters: WorkoutParameters,
+    isEchoMode: Boolean = false,
+    echoForceKgMax: Float = 0f // Echo mode: actual measured force per cable (kg)
 ) {
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -322,16 +329,23 @@ private fun ExecutionPage(
 
         // Circular Force Gauge
         if (metric != null) {
-            val totalLoad = metric.loadA + metric.loadB
-            val targetWeight = workoutParameters.weightPerCableKg * 2
-            val gaugeMax = (targetWeight * 1.5f).coerceAtLeast(40f)
+            // Current Load - show per-cable resistance (matching parent repo)
+            // For Echo mode: use heuristic kgMax (actual measured force from device)
+            // For other modes: use totalLoad / 2 (from workout metrics)
+            val perCableKg = if (isEchoMode && echoForceKgMax > 0f) {
+                echoForceKgMax
+            } else {
+                (metric.loadA + metric.loadB) / 2f
+            }
+            val targetWeight = workoutParameters.weightPerCableKg
+            val gaugeMax = (targetWeight * 1.5f).coerceAtLeast(20f)
 
             CircularForceGauge(
-                currentForce = totalLoad,
+                currentForce = perCableKg,
                 maxForce = gaugeMax,
                 velocity = (metric.velocityA + metric.velocityB) / 2.0,
-                label = formatWeight(totalLoad, weightUnit),
-                subLabel = "TOTAL LOAD",
+                label = formatWeight(perCableKg, weightUnit),
+                subLabel = "PER CABLE",
                 modifier = Modifier.size(200.dp)
             )
         } else {

@@ -129,9 +129,9 @@ fun EnhancedMainScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            // Subtitle - always show "Vitruvian Project Phoenix" with gradient
+                            // Subtitle - always show "Project Phoenix" with gradient
                             Text(
-                                text = "Vitruvian Project Phoenix",
+                                text = "Project Phoenix",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     brush = Brush.linearGradient(
                                         colors = listOf(
