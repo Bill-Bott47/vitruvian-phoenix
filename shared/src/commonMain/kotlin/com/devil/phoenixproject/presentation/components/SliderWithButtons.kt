@@ -80,10 +80,9 @@ fun SliderWithButtons(
             // Slider
             ExpressiveSlider(
                 value = value,
-                onValueChange = onValueChange,
+                onValueChange = if (enabled) onValueChange else { _ -> },
                 valueRange = valueRange,
                 modifier = Modifier.weight(1f),
-                enabled = enabled
             )
 
             // Increase button
