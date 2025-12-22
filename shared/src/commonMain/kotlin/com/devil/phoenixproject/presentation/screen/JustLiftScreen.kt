@@ -50,7 +50,7 @@ import com.devil.phoenixproject.domain.model.*
 import com.devil.phoenixproject.presentation.components.AddProfileDialog
 import com.devil.phoenixproject.presentation.components.CompactNumberPicker
 import com.devil.phoenixproject.presentation.components.ExpressiveSlider
-import com.devil.phoenixproject.presentation.components.ProfileSpeedDial
+import com.devil.phoenixproject.presentation.components.ProfileSidePanel
 import com.devil.phoenixproject.presentation.components.ProgressionSlider
 import com.devil.phoenixproject.presentation.navigation.NavigationRoutes
 import com.devil.phoenixproject.presentation.viewmodel.MainViewModel
@@ -190,18 +190,7 @@ fun JustLiftScreen(
         viewModel.updateTopBarTitle("Just Lift")
     }
 
-    Scaffold(
-        floatingActionButton = {
-            ProfileSpeedDial(
-                profiles = profiles,
-                activeProfile = activeProfile,
-                onProfileSelected = { profile ->
-                    scope.launch { profileRepository.setActiveProfile(profile.id) }
-                },
-                onAddProfile = { showAddProfileDialog = true }
-            )
-        }
-    ) { padding ->
+    Scaffold { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -489,6 +478,15 @@ fun JustLiftScreen(
                     onDismiss = { viewModel.clearConnectionError() }
                 )
             }
+
+            // Profile side panel
+            ProfileSidePanel(
+                profiles = profiles,
+                activeProfile = activeProfile,
+                profileRepository = profileRepository,
+                scope = scope,
+                onAddProfile = { showAddProfileDialog = true }
+            )
         // Add Profile Dialog
         if (showAddProfileDialog) {
             AddProfileDialog(
