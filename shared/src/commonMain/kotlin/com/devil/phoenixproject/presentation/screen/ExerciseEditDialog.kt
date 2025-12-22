@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -254,17 +255,35 @@ fun ExerciseEditBottomSheet(
                     style = MaterialTheme.typography.bodyMedium
                 )
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.fillMaxWidth()
+                var eccentricLoadExpanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(
+                    expanded = eccentricLoadExpanded,
+                    onExpandedChange = { eccentricLoadExpanded = it }
                 ) {
-                    EccentricLoad.entries.forEach { load ->
-                        FilterChip(
-                            selected = selectedEccentricLoad == load,
-                            onClick = { selectedEccentricLoad = load },
-                            label = { Text(load.displayName) },
-                            modifier = Modifier.weight(1f)
-                        )
+                    OutlinedTextField(
+                        value = selectedEccentricLoad.displayName,
+                        onValueChange = {},
+                        readOnly = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = eccentricLoadExpanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = eccentricLoadExpanded,
+                        onDismissRequest = { eccentricLoadExpanded = false }
+                    ) {
+                        EccentricLoad.entries.forEach { load ->
+                            DropdownMenuItem(
+                                text = { Text(load.displayName) },
+                                onClick = {
+                                    selectedEccentricLoad = load
+                                    eccentricLoadExpanded = false
+                                },
+                                contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                            )
+                        }
                     }
                 }
 

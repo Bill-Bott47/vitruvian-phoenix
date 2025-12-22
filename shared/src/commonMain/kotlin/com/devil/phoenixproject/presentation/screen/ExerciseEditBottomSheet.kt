@@ -926,11 +926,14 @@ fun ModeSelector(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EccentricLoadSelector(
     eccentricLoad: EccentricLoad,
     onLoadChange: (EccentricLoad) -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
@@ -942,51 +945,43 @@ fun EccentricLoadSelector(
                 .padding(Spacing.medium)
         ) {
             Text(
-                "Eccentric Load: ${eccentricLoad.percentage}%",
+                "Eccentric Load",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Spacer(modifier = Modifier.height(Spacing.medium))
+            Spacer(modifier = Modifier.height(Spacing.small))
 
-            val eccentricLoadValues = listOf(
-                EccentricLoad.LOAD_0,
-                EccentricLoad.LOAD_50,
-                EccentricLoad.LOAD_75,
-                EccentricLoad.LOAD_100,
-                EccentricLoad.LOAD_120,
-                EccentricLoad.LOAD_150
-            )
-            val currentIndex = eccentricLoadValues.indexOf(eccentricLoad).let {
-                if (it < 0) 3 else it
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = it }
             ) {
-                Text(
-                    text = "0%",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                OutlinedTextField(
+                    value = eccentricLoad.displayName,
+                    onValueChange = {},
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth(),
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
                 )
-                Text(
-                    text = "150%",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    EccentricLoad.entries.forEach { load ->
+                        DropdownMenuItem(
+                            text = { Text(load.displayName) },
+                            onClick = {
+                                onLoadChange(load)
+                                expanded = false
+                            },
+                            contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                        )
+                    }
+                }
             }
-
-            Slider(
-                value = currentIndex.toFloat(),
-                onValueChange = { value ->
-                    val index = value.toInt().coerceIn(0, eccentricLoadValues.size - 1)
-                    onLoadChange(eccentricLoadValues[index])
-                },
-                valueRange = 0f..(eccentricLoadValues.size - 1).toFloat(),
-                steps = eccentricLoadValues.size - 2,
-                modifier = Modifier.fillMaxWidth()
-            )
 
             Spacer(modifier = Modifier.height(Spacing.small))
 
