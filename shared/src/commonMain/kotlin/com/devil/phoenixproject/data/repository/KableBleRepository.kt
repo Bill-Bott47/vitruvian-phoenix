@@ -288,6 +288,9 @@ class KableBleRepository : BleRepository {
     // Monitor polling job (for explicit control)
     private var monitorPollingJob: kotlinx.coroutines.Job? = null
 
+    // Polling mutex to prevent race conditions (Task 4)
+    private val monitorPollingMutex = Mutex()
+
     // Diagnostic polling job (500ms keep-alive)
     private var diagnosticPollingJob: kotlinx.coroutines.Job? = null
 

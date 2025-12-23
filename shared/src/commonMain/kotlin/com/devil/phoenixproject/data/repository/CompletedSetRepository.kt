@@ -15,7 +15,7 @@ interface CompletedSetRepository {
     /**
      * Get all planned sets for a routine exercise, ordered by set number.
      */
-    suspend fun getPlannedSets(routineExerciseId: Long): List<PlannedSet>
+    suspend fun getPlannedSets(routineExerciseId: String): List<PlannedSet>
 
     /**
      * Save a planned set.
@@ -40,7 +40,7 @@ interface CompletedSetRepository {
     /**
      * Delete all planned sets for a routine exercise.
      */
-    suspend fun deletePlannedSetsForExercise(routineExerciseId: Long)
+    suspend fun deletePlannedSetsForExercise(routineExerciseId: String)
 
     // ==================== Completed Sets ====================
 
