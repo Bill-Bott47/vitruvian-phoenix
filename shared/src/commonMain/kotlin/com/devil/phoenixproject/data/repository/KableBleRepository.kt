@@ -28,6 +28,8 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import co.touchlab.kermit.Logger
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
@@ -85,6 +87,7 @@ class KableBleRepository : BleRepository {
         // Connection settings
         private const val CONNECTION_RETRY_COUNT = 3
         private const val CONNECTION_RETRY_DELAY_MS = 100L
+        private const val CONNECTION_TIMEOUT_MS = 15_000L
         private const val DESIRED_MTU = 247  // Match parent repo (needs 100+ for 96-byte program frames)
 
         // Handle detection thresholds (from parent repo - proven working)
@@ -637,14 +640,30 @@ class KableBleRepository : BleRepository {
                 }
                 ?.launchIn(scope)
 
-            // Connection with retry logic
+            // Connection with retry logic and timeout protection
             var lastException: Exception? = null
             for (attempt in 1..CONNECTION_RETRY_COUNT) {
                 try {
                     log.d { "Connection attempt $attempt of $CONNECTION_RETRY_COUNT" }
-                    peripheral?.connect()
-                    log.i { "Connection initiated to ${device.name}" }
+
+                    // Wrap connection in timeout to prevent zombie "Connecting" state
+                    withTimeout(CONNECTION_TIMEOUT_MS) {
+                        peripheral?.connect()
+                        log.i { "Connection initiated to ${device.name}, waiting for established state..." }
+
+                        // Wait for connection to actually establish (state becomes Connected)
+                        // The state observer (lines 552-641) will emit Connected when ready
+                        peripheral?.state?.first { it is State.Connected }
+                        log.i { "Connection established to ${device.name}" }
+                    }
+
                     return Result.success(Unit) // Success, exit retry loop
+                } catch (e: TimeoutCancellationException) {
+                    lastException = Exception("Connection timeout after ${CONNECTION_TIMEOUT_MS}ms")
+                    log.w { "Connection attempt $attempt timed out after ${CONNECTION_TIMEOUT_MS}ms" }
+                    if (attempt < CONNECTION_RETRY_COUNT) {
+                        delay(CONNECTION_RETRY_DELAY_MS)
+                    }
                 } catch (e: Exception) {
                     lastException = e
                     log.w { "Connection attempt $attempt failed: ${e.message}" }
@@ -654,7 +673,10 @@ class KableBleRepository : BleRepository {
                 }
             }
 
-            // All retries failed
+            // All retries failed - cleanup and return to disconnected state
+            peripheral?.disconnect()
+            peripheral = null
+            _connectionState.value = ConnectionState.Disconnected
             throw lastException ?: Exception("Connection failed after $CONNECTION_RETRY_COUNT attempts")
 
         } catch (e: Exception) {
