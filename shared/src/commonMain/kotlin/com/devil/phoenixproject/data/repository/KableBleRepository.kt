@@ -500,6 +500,7 @@ class KableBleRepository : BleRepository {
         log.i { "scanAndConnect: Starting scan and auto-connect (timeout: ${timeoutMs}ms)" }
         logRepo.info(LogEventType.SCAN_START, "Scan and connect started")
 
+        // Connection cleanup is handled inside connect() to ensure consistent behavior.
         _connectionState.value = ConnectionState.Scanning
         _scannedDevices.value = emptyList()
         discoveredAdvertisements.clear()
@@ -552,6 +553,11 @@ class KableBleRepository : BleRepository {
             device.name,
             device.address
         )
+
+        // Clean up any existing connection first (matches parent repo)
+        // Prevents "dangling GATT connections" on Android 16/Pixel 7
+        cleanupExistingConnection()
+
         _connectionState.value = ConnectionState.Connecting
 
         val advertisement = discoveredAdvertisements[device.address]
@@ -1597,6 +1603,45 @@ class KableBleRepository : BleRepository {
 
         val afterCancel = currentTimeMillis()
         log.d { "STOP_DEBUG: [$afterCancel] Jobs cancelled (took ${afterCancel - timestamp}ms)" }
+    }
+
+    /**
+     * Clean up any existing connection before creating a new one.
+     * Matches parent repo behavior to prevent "dangling GATT connections"
+     * which cause issues on Android 16/Pixel 7.
+     *
+     * This is idempotent - safe to call even if no connection exists.
+     */
+    private suspend fun cleanupExistingConnection() {
+        val existingPeripheral = peripheral ?: return
+
+        log.d { "Cleaning up existing connection before new connection attempt" }
+        logRepo.info(
+            LogEventType.DISCONNECT,
+            "Cleaning up existing connection (pre-connect)",
+            connectedDeviceName,
+            connectedDeviceAddress
+        )
+
+        // Cancel all polling jobs (matches disconnect() behavior)
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+        monitorPollingJob?.cancel()
+        monitorPollingJob = null
+        diagnosticPollingJob?.cancel()
+        diagnosticPollingJob = null
+
+        // Disconnect and release the peripheral
+        try {
+            isExplicitDisconnect = true
+            existingPeripheral.disconnect()
+        } catch (e: Exception) {
+            log.w { "Cleanup disconnect error (non-fatal): ${e.message}" }
+        }
+
+        peripheral = null
+        // Note: Don't update _connectionState here - we're about to connect
+        // and the Connecting state will be set by the caller
     }
 
     private fun processIncomingData(data: ByteArray) {
