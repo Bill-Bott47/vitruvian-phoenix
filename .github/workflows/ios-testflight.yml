@@ -63,8 +63,18 @@ jobs:
           # Show what was set
           grep "CURRENT_PROJECT_VERSION" iosApp/VitruvianPhoenix/VitruvianPhoenix.xcodeproj/project.pbxproj | head -2
 
-      - name: Build shared framework
-        run: ./gradlew :shared:linkReleaseFrameworkIosArm64 --no-parallel
+      - name: Build shared framework and resources
+        run: |
+          # Build the framework
+          ./gradlew :shared:linkReleaseFrameworkIosArm64 --no-parallel
+          # Explicitly generate compose resources for iOS
+          ./gradlew :shared:generateComposeResClass
+          ./gradlew :shared:iosArm64ProcessResources || true
+
+          # Debug: Show what resource directories exist
+          echo "=== Checking resource directories ==="
+          find shared/build -type d -name "composeResources" 2>/dev/null | head -10
+          find shared/build -name "vitphoe_logo.png" 2>/dev/null | head -5
 
       - name: Create XCFramework
         run: |
@@ -82,18 +92,34 @@ jobs:
           RESOURCE_DST="iosApp/VitruvianPhoenix/compose-resources"
           mkdir -p "$RESOURCE_DST"
 
+          # Try multiple possible source paths (Compose MP resource generation varies by version)
           RESOURCE_PATHS=(
             "shared/build/processedResources/iosArm64/main/composeResources"
             "shared/build/kotlin-multiplatform-resources/aggregated-resources/iosArm64/composeResources"
             "shared/build/generated/compose/resourceGenerator/assembledResources/iosArm64Main/composeResources"
+            "shared/build/generated/compose/resourceGenerator/preparedResources/commonMain/composeResources"
           )
 
+          FOUND=false
           for RESOURCE_SRC in "${RESOURCE_PATHS[@]}"; do
+            echo "Checking: $RESOURCE_SRC"
             if [ -d "$RESOURCE_SRC" ] && [ "$(ls -A "$RESOURCE_SRC" 2>/dev/null)" ]; then
+              echo "Found compose resources at: $RESOURCE_SRC"
               cp -R "$RESOURCE_SRC"/* "$RESOURCE_DST"/
+              FOUND=true
               break
             fi
           done
+
+          if [ "$FOUND" = true ]; then
+            echo "=== Copied compose resources to $RESOURCE_DST ==="
+            find "$RESOURCE_DST" -type f | head -20
+          else
+            echo "ERROR: No compose resources found!"
+            echo "Checked paths:"
+            printf '  - %s\n' "${RESOURCE_PATHS[@]}"
+            exit 1
+          fi
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer

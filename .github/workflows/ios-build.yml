@@ -55,8 +55,18 @@ jobs:
       - name: Konan cache status
         run: echo "Konan cache hit=${{ steps.konan-cache.outputs.cache-hit }}"
 
-      - name: Build shared framework (iosArm64 only)
-        run: ./gradlew :shared:linkReleaseFrameworkIosArm64 --no-parallel
+      - name: Build shared framework and resources
+        run: |
+          # Build the framework
+          ./gradlew :shared:linkReleaseFrameworkIosArm64 --no-parallel
+          # Explicitly generate compose resources for iOS
+          ./gradlew :shared:generateComposeResClass
+          ./gradlew :shared:iosArm64ProcessResources || true
+
+          # Debug: Show what resource directories exist
+          echo "=== Checking resource directories ==="
+          find shared/build -type d -name "composeResources" 2>/dev/null | head -10
+          find shared/build -name "vitphoe_logo.png" 2>/dev/null | head -5
 
       - name: Create XCFramework from iosArm64
         run: |
@@ -84,6 +94,7 @@ jobs:
             "shared/build/processedResources/iosArm64/main/composeResources"
             "shared/build/kotlin-multiplatform-resources/aggregated-resources/iosArm64/composeResources"
             "shared/build/generated/compose/resourceGenerator/assembledResources/iosArm64Main/composeResources"
+            "shared/build/generated/compose/resourceGenerator/preparedResources/commonMain/composeResources"
           )
 
           FOUND=false
