@@ -1,5 +1,6 @@
 package com.devil.phoenixproject.presentation.components
 
+import android.media.AudioManager
 import android.view.ViewGroup
 import android.widget.VideoView
 import androidx.compose.foundation.background
@@ -51,6 +52,10 @@ actual fun VideoPlayer(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
                         )
+
+                        // Prevent audio focus theft - these are silent preview videos (like GIFs)
+                        // Without this, even muted videos interrupt Spotify and other audio apps
+                        setAudioFocusRequest(AudioManager.AUDIOFOCUS_NONE)
 
                         try {
                             setVideoURI(videoUrl.toUri())

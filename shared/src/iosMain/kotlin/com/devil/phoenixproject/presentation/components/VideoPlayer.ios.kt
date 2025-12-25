@@ -26,6 +26,8 @@ import androidx.compose.ui.interop.UIKitView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.cinterop.readValue
+import platform.AVFAudio.AVAudioSession
+import platform.AVFAudio.AVAudioSessionCategoryAmbient
 import platform.AVFoundation.AVLayerVideoGravityResizeAspect
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
@@ -33,10 +35,10 @@ import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
 import platform.AVFoundation.AVPlayerItemFailedToPlayToEndTimeErrorKey
 import platform.AVFoundation.AVPlayerItemFailedToPlayToEndTimeNotification
 import platform.AVFoundation.AVPlayerLayer
-import platform.AVFoundation.currentTime
 import platform.AVFoundation.pause
 import platform.AVFoundation.play
 import platform.AVFoundation.seekToTime
+import platform.AVFoundation.setVolume
 import platform.CoreMedia.CMTimeMake
 import platform.CoreGraphics.CGRectZero
 import platform.Foundation.NSError
@@ -203,19 +205,29 @@ private class LoopingPlayerView : UIView(frame = CGRectZero.readValue()) {
         cleanup()
         hasFailure = false
 
-        val url = NSURL(string = urlString)
+        val url = NSURL.URLWithString(urlString)
         if (url == null) {
+            hasFailure = true
             onError("Malformed video URL")
             return
         }
 
         currentUrl = urlString
 
+        // Configure audio session to not interrupt other apps (e.g., Spotify)
+        // AVAudioSessionCategoryAmbient mixes with other audio and respects mute switch
+        // This is essential for silent preview videos that play like GIFs
+        try {
+            val session = AVAudioSession.sharedInstance()
+            session.setCategory(AVAudioSessionCategoryAmbient, null)
+        } catch (_: Exception) {
+            // Ignore audio session configuration errors - video will still play
+        }
+
         val item = AVPlayerItem(uRL = url)
         val avPlayer = AVPlayer(playerItem = item)
-        // Mute the video to prevent audio focus theft from other apps (e.g., Spotify)
-        // These are silent preview videos that play like GIFs
-        avPlayer.volume = 0f
+        // Also mute the video as an extra safeguard
+        avPlayer.setVolume(0f)
         player = avPlayer
 
         val layer = playerLayer ?: AVPlayerLayer().also { createdLayer ->
