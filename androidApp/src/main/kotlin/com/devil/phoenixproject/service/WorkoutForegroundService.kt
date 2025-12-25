@@ -81,7 +81,7 @@ class WorkoutForegroundService : Service() {
         // minSdk=26 (Android 8.0) always has NotificationChannel
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Vitruvian Workout",
+            "Phoenix Workout",
             NotificationManager.IMPORTANCE_LOW // Low importance = no sound/vibration
         ).apply {
             description = "Shows ongoing workout status"
@@ -93,7 +93,7 @@ class WorkoutForegroundService : Service() {
     }
 
     private fun createNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle("Vitruvian Workout Active")
+        .setContentTitle("Phoenix Workout Active")
         .setContentText("$workoutMode - $currentReps/$targetReps reps")
         .setSmallIcon(android.R.drawable.ic_media_play)
         .setOngoing(true) // Cannot be dismissed

@@ -176,11 +176,17 @@ jobs:
             -exportPath $RUNNER_TEMP/export \
             -exportOptionsPlist iosApp/ExportOptions.plist
 
+      - name: Rename .ipa to ProjectPhoenix
+        if: github.event_name != 'pull_request'
+        run: |
+          # Rename the exported .ipa from VitruvianPhoenix to ProjectPhoenix
+          mv "$RUNNER_TEMP/export/VitruvianPhoenix.ipa" "$RUNNER_TEMP/export/ProjectPhoenix.ipa"
+
       - name: Upload .ipa artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: VitruvianPhoenix-${{ github.sha }}
+          name: ProjectPhoenix-${{ github.sha }}
           path: ${{ runner.temp }}/export/*.ipa
           retention-days: 14
 
@@ -199,7 +205,7 @@ jobs:
 
           # Upload to TestFlight
           xcrun altool --upload-app \
-            -f "$RUNNER_TEMP/export/VitruvianPhoenix.ipa" \
+            -f "$RUNNER_TEMP/export/ProjectPhoenix.ipa" \
             --type ios \
             --apiKey "$APPSTORE_API_KEY_ID" \
             --apiIssuer "$APPSTORE_ISSUER_ID"
