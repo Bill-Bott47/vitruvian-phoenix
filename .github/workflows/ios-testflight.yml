@@ -93,7 +93,8 @@ jobs:
 
       - name: Copy Compose resources
         run: |
-          RESOURCE_DST="iosApp/VitruvianPhoenix/compose-resources"
+          # IMPORTANT: Folder must be named 'composeResources' (camelCase) to match what Compose runtime expects
+          RESOURCE_DST="iosApp/VitruvianPhoenix/composeResources"
           mkdir -p "$RESOURCE_DST"
 
           # Try multiple possible source paths (Compose MP resource generation varies by version)
