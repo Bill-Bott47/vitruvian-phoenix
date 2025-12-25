@@ -354,6 +354,107 @@
             text-decoration: underline;
         }
 
+        /* Beta signup form styles */
+        .beta-form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group label {
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+
+        .form-group input[type="email"],
+        .form-group input[type="text"] {
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--panel-alt);
+            color: var(--text);
+            font-size: 1rem;
+            font-family: inherit;
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: rgba(255, 122, 61, 0.08);
+        }
+
+        .form-group input::placeholder {
+            color: var(--muted);
+            opacity: 0.6;
+        }
+
+        .required {
+            color: var(--accent);
+        }
+
+        .optional {
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+
+        .checkbox-group {
+            display: flex;
+            gap: 20px;
+            margin-top: 4px;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: var(--text);
+        }
+
+        .checkbox-label input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .form-note {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-top: 8px;
+        }
+
+        .beta-form button[type="submit"] {
+            align-self: flex-start;
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+        }
+
+        @media (max-width: 600px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .checkbox-group {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+
         .reveal {
             opacity: 0;
             transform: translateY(16px);
@@ -422,6 +523,7 @@
                     Built to keep equipment functional after the company's bankruptcy and avoid e-waste.
                 </p>
                 <div class="cta">
+                    <a class="btn secondary" href="#beta-signup">Join the Beta</a>
                     <a class="btn primary" href="https://ko-fi.com/vitruvianredux" target="_blank" rel="noopener noreferrer">Donate on Ko-fi</a>
                     <a class="btn ghost" href="https://github.com/DasBluEyedDevil/Project-Phoenix-MP" target="_blank" rel="noopener noreferrer">View on GitHub</a>
                 </div>
@@ -484,6 +586,38 @@
             <div class="cta">
                 <a class="btn primary" href="https://ko-fi.com/vitruvianredux" target="_blank" rel="noopener noreferrer">Donate on Ko-fi</a>
             </div>
+        </section>
+
+        <section class="card reveal delay-3" id="beta-signup">
+            <h2>Join the Beta</h2>
+            <p class="tagline" style="margin-bottom: 20px;">
+                Sign up to get early access to Project Phoenix. For iOS TestFlight, use the email associated with your Apple ID.
+            </p>
+            <form action="https://formspree.io/f/mvzopgoy" method="POST" class="beta-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="email">Email address <span class="required">*</span></label>
+                        <input type="email" id="email" name="email" required placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="name">Name <span class="optional">(optional)</span></label>
+                        <input type="text" id="name" name="name" placeholder="Your name">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Platform preference</label>
+                    <div class="checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="platform" value="iOS"> iOS (TestFlight)
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="platform" value="Android"> Android
+                        </label>
+                    </div>
+                </div>
+                <button type="submit" class="btn primary">Sign Up for Beta</button>
+            </form>
+            <p class="form-note">We'll only use your email to send beta invites. No spam, ever.</p>
         </section>
 
         <section class="grid reveal delay-4">
