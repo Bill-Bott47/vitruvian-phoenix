@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 36
         // CI can override versionCode via -Pversion.code=XXX
-        versionCode = (project.findProperty("version.code") as String?)?.toInt() ?: 1
+        versionCode = (project.findProperty("version.code") as String?)?.toInt() ?: 2
         versionName = "0.1.1-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
