@@ -304,13 +304,13 @@ fun TrainingCyclesScreen(
                             // 2. Convert template using TemplateConverter
                             val conversionResult = templateConverter.convert(state.template)
 
-                            // 3. Save cycle via TrainingCycleRepository
-                            cycleRepository.saveCycle(conversionResult.cycle)
-
-                            // 4. Save routines via viewModel
+                            // 3. Save routines FIRST (CycleDay has FK to Routine)
                             conversionResult.routines.forEach { routine ->
                                 viewModel.saveRoutine(routine)
                             }
+
+                            // 4. Save cycle via TrainingCycleRepository (after routines exist)
+                            cycleRepository.saveCycle(conversionResult.cycle)
 
                             // 5. Show warnings if any exercises weren't found
                             if (conversionResult.warnings.isNotEmpty()) {
