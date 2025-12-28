@@ -79,7 +79,7 @@ CREATE POLICY "Users can insert own subscription"
 Add to `[versions]` section:
 ```toml
 supabase = "3.1.4"
-revenuecat = "8.12.1"
+revenuecat = "2.2.15+17.25.0"
 ```
 
 **Step 2: Add library declarations**
@@ -92,8 +92,8 @@ supabase-auth = { module = "io.github.jan-tennert.supabase:auth-kt" }
 supabase-postgrest = { module = "io.github.jan-tennert.supabase:postgrest-kt" }
 supabase-realtime = { module = "io.github.jan-tennert.supabase:realtime-kt" }
 
-# RevenueCat
-revenuecat-purchases = { module = "com.revenuecat.purchases:purchases-kmp", version.ref = "revenuecat" }
+# RevenueCat (KMP)
+revenuecat-purchases-core = { module = "com.revenuecat.purchases:purchases-kmp-core", version.ref = "revenuecat" }
 ```
 
 **Step 3: Sync Gradle**
@@ -129,7 +129,7 @@ val commonMain by getting {
         implementation(libs.supabase.postgrest)
 
         // RevenueCat
-        implementation(libs.revenuecat.purchases)
+        implementation(libs.revenuecat.purchases.core)
     }
 }
 ```
@@ -183,7 +183,8 @@ Create: `shared/src/androidMain/kotlin/com/devil/phoenixproject/config/PlatformC
 package com.devil.phoenixproject.config
 
 actual object PlatformConfig {
-    actual val revenueCatApiKey: String = "YOUR_ANDROID_RC_KEY"
+    // Test/sandbox key - replace with production key before release
+    actual val revenueCatApiKey: String = "test_cBqVmeMuksjKrXmwfPVIXtlubeh"
 }
 ```
 
@@ -195,7 +196,9 @@ Create: `shared/src/iosMain/kotlin/com/devil/phoenixproject/config/PlatformConfi
 package com.devil.phoenixproject.config
 
 actual object PlatformConfig {
-    actual val revenueCatApiKey: String = "YOUR_IOS_RC_KEY"
+    // Test/sandbox key - replace with production key before release
+    // Note: iOS may need a separate key from RevenueCat dashboard
+    actual val revenueCatApiKey: String = "test_cBqVmeMuksjKrXmwfPVIXtlubeh"
 }
 ```
 
