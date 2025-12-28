@@ -28,6 +28,11 @@ sealed class NavigationRoutes(val route: String) {
     object CycleEditor : NavigationRoutes("cycle_editor/{cycleId}") {
         fun createRoute(cycleId: String) = "cycle_editor/$cycleId"
     }
+
+    // Premium/Account routes
+    object Auth : NavigationRoutes("auth")
+    object Paywall : NavigationRoutes("paywall")
+    object Account : NavigationRoutes("account")
 }
 
 /**
