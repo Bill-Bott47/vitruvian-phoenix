@@ -834,9 +834,9 @@ class MainViewModel constructor(
 
     fun stopWorkout() {
         viewModelScope.launch {
-             bleRepository.sendWorkoutCommand(BlePacketFactory.createStopCommand())
-             // Note: Don't cancel monitorDataCollectionJob here - it's global and should
-             // continue running to track positions for the next workout (matching parent repo)
+             // Send RESET command (0x0A) to fully stop workout on machine
+             // This matches parent repo and web app behavior
+             bleRepository.stopWorkout()
              _hapticEvents.emit(HapticEvent.WORKOUT_END)
 
              val params = _workoutParameters.value
@@ -851,6 +851,11 @@ class MainViewModel constructor(
                  bleRepository.restartMonitorPolling()
              }
 
+             // Get exercise name for display (avoids DB lookups when viewing history)
+             val exerciseName = params.selectedExerciseId?.let { exerciseId ->
+                 exerciseRepository.getExerciseById(exerciseId)?.name
+             }
+
              val session = WorkoutSession(
                  timestamp = workoutStartTime,
                  mode = params.workoutType.displayName,
@@ -862,10 +867,20 @@ class MainViewModel constructor(
                  duration = currentTimeMillis() - workoutStartTime,
                  isJustLift = isJustLift,
                  exerciseId = params.selectedExerciseId,
+                 exerciseName = exerciseName,
                  routineSessionId = currentRoutineSessionId,
                  routineName = currentRoutineName
              )
              workoutRepository.saveSession(session)
+
+             // Save exercise defaults for next time (only for Just Lift and Single Exercise modes)
+             // This mirrors the logic in saveWorkoutSession() to ensure defaults are saved
+             // whether the workout is manually stopped or auto-completed
+             if (isJustLift) {
+                 saveJustLiftDefaultsFromWorkout()
+             } else if (isSingleExerciseMode()) {
+                 saveSingleExerciseDefaultsFromWorkout()
+             }
 
              // Show Summary
              val metrics = collectedMetrics.toList()
@@ -1549,6 +1564,33 @@ class MainViewModel constructor(
     }
 
     /**
+     * Get saved Single Exercise defaults for an exercise, trying the preferred cable config first,
+     * then falling back to other cable configs if not found.
+     * This handles cases where user changed cable config in a previous session.
+     */
+    suspend fun getSingleExerciseDefaultsWithFallback(
+        exerciseId: String,
+        preferredCableConfig: String
+    ): com.devil.phoenixproject.data.preferences.SingleExerciseDefaults? {
+        // Try preferred config first
+        preferencesManager.getSingleExerciseDefaults(exerciseId, preferredCableConfig)?.let {
+            return it
+        }
+
+        // Try other cable configs as fallback
+        val allConfigs = listOf("DOUBLE", "SINGLE", "EITHER")
+        for (config in allConfigs) {
+            if (config != preferredCableConfig) {
+                preferencesManager.getSingleExerciseDefaults(exerciseId, config)?.let {
+                    return it
+                }
+            }
+        }
+
+        return null
+    }
+
+    /**
      * Save Single Exercise defaults for a specific exercise and cable configuration.
      */
     fun saveSingleExerciseDefaults(defaults: com.devil.phoenixproject.data.preferences.SingleExerciseDefaults) {
@@ -2100,6 +2142,11 @@ class MainViewModel constructor(
             params.weightPerCableKg
         }
 
+        // Get exercise name for display (avoids DB lookups when viewing history)
+        val exerciseName = params.selectedExerciseId?.let { exerciseId ->
+            exerciseRepository.getExerciseById(exerciseId)?.name
+        }
+
         val session = WorkoutSession(
             id = sessionId,
             timestamp = workoutStartTime,
@@ -2114,6 +2161,7 @@ class MainViewModel constructor(
             isJustLift = params.isJustLift,
             stopAtTop = params.stopAtTop,
             exerciseId = params.selectedExerciseId,
+            exerciseName = exerciseName,
             routineSessionId = currentRoutineSessionId,
             routineName = currentRoutineName
         )

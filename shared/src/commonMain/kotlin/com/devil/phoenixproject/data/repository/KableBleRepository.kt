@@ -3,6 +3,7 @@ package com.devil.phoenixproject.data.repository
 import com.devil.phoenixproject.domain.model.ConnectionState
 import com.devil.phoenixproject.domain.model.SampleStatus
 import com.devil.phoenixproject.domain.model.WorkoutMetric
+import com.devil.phoenixproject.util.BlePacketFactory
 import com.juul.kable.Advertisement
 import com.juul.kable.Peripheral
 import com.juul.kable.Scanner
@@ -117,6 +118,7 @@ class KableBleRepository : BleRepository {
         private const val HEARTBEAT_READ_TIMEOUT_MS = 1500L
         private const val DELOAD_EVENT_DEBOUNCE_MS = 2000L
         private const val DIAGNOSTIC_POLL_INTERVAL_MS = 500L  // Keep-alive polling (matching parent)
+        private const val HEURISTIC_POLL_INTERVAL_MS = 250L   // Force telemetry polling (4Hz - matching parent repo)
 
         // Heartbeat no-op command (MUST be 4 bytes)
         private val HEARTBEAT_NO_OP = byteArrayOf(0x00, 0x00, 0x00, 0x00)
@@ -301,6 +303,9 @@ class KableBleRepository : BleRepository {
 
     // Diagnostic polling job (500ms keep-alive)
     private var diagnosticPollingJob: kotlinx.coroutines.Job? = null
+
+    // Heuristic polling job (250ms / 4Hz - force telemetry for Echo mode)
+    private var heuristicPollingJob: kotlinx.coroutines.Job? = null
 
     // Deload event debouncing
     private var lastDeloadEventTime = 0L
@@ -1021,20 +1026,6 @@ class KableBleRepository : BleRepository {
             }
         }
 
-        // Observe HEURISTIC characteristic for Echo mode force feedback (per Nordic spec)
-        scope.launch {
-            try {
-                log.i { "Starting HEURISTIC characteristic notifications (Echo force feedback)" }
-                p.observe(heuristicCharacteristic)
-                    .catch { e -> log.w { "Heuristic observation error (non-fatal): ${e.message}" } }
-                    .collect { data ->
-                        parseHeuristicData(data)
-                    }
-            } catch (e: Exception) {
-                log.d { "HEURISTIC notifications not available (expected): ${e.message}" }
-            }
-        }
-
         // ===== POLLING (NOT notifications - these chars are ReadableCharacteristics) =====
 
         // MONITOR characteristic - use POLLING only (NOT notifications)
@@ -1046,6 +1037,12 @@ class KableBleRepository : BleRepository {
         // Maintains connection and provides fault/temperature data
         log.i { "Starting DIAGNOSTIC characteristic polling (500ms keep-alive)" }
         startDiagnosticPolling(p)
+
+        // HEURISTIC characteristic - 250ms/4Hz polling for force telemetry
+        // Per parent repo: Uses polling (not notifications) to get phase statistics
+        // Critical for Echo mode force feedback - provides kgMax for actual measured force
+        log.i { "Starting HEURISTIC characteristic polling (250ms/4Hz - force telemetry)" }
+        startHeuristicPolling(p)
     }
 
     /**
@@ -1130,6 +1127,57 @@ class KableBleRepository : BleRepository {
                 }
             }
             log.d { "📊 Diagnostic polling ended (success: $successfulReads, failed: $failedReads)" }
+        }
+    }
+
+    /**
+     * Poll HEURISTIC characteristic every 250ms (4Hz) for force telemetry.
+     * Matches parent repo and official app - provides phase statistics for
+     * concentric/eccentric analysis and Echo mode force feedback.
+     *
+     * Returns 48 bytes: 6 floats for concentric stats, 6 floats for eccentric stats
+     * Each phase has: kgAvg, kgMax, velAvg, velMax, wattAvg, wattMax
+     *
+     * This is critical for accurate force display - heuristicData.kgMax represents
+     * actual measured force from the machine, not the user's configured weight.
+     */
+    private fun startHeuristicPolling(p: Peripheral) {
+        heuristicPollingJob?.cancel()
+        heuristicPollingJob = scope.launch {
+            log.d { "🔄 Starting SEQUENTIAL heuristic polling (${HEURISTIC_POLL_INTERVAL_MS}ms interval / 4Hz - matching parent repo)" }
+            var successfulReads = 0L
+            var failedReads = 0L
+
+            while (_connectionState.value is ConnectionState.Connected && isActive) {
+                try {
+                    val data = withTimeoutOrNull(HEARTBEAT_READ_TIMEOUT_MS) {
+                        p.read(heuristicCharacteristic)
+                    }
+
+                    if (data != null && data.isNotEmpty()) {
+                        successfulReads++
+                        if (successfulReads % 100 == 0L) {
+                            log.v { "📊 Heuristic poll #$successfulReads (failed: $failedReads)" }
+                        }
+                        parseHeuristicData(data)
+                    } else {
+                        failedReads++
+                        if (failedReads <= 3) {
+                            log.v { "Heuristic read returned null/empty" }
+                        }
+                    }
+
+                    // Fixed 250ms interval (4Hz) matching parent repo
+                    delay(HEURISTIC_POLL_INTERVAL_MS)
+                } catch (e: Exception) {
+                    failedReads++
+                    if (failedReads <= 5 || failedReads % 50 == 0L) {
+                        log.w { "❌ Heuristic poll failed #$failedReads: ${e.message}" }
+                    }
+                    delay(HEURISTIC_POLL_INTERVAL_MS)
+                }
+            }
+            log.d { "📊 Heuristic polling ended (success: $successfulReads, failed: $failedReads)" }
         }
     }
 
@@ -1346,6 +1394,8 @@ class KableBleRepository : BleRepository {
         monitorPollingJob = null
         diagnosticPollingJob?.cancel()
         diagnosticPollingJob = null
+        heuristicPollingJob?.cancel()
+        heuristicPollingJob = null
 
         try {
             peripheral?.disconnect()
@@ -1476,13 +1526,17 @@ class KableBleRepository : BleRepository {
     override suspend fun stopWorkout(): Result<Unit> {
         log.i { "Stopping workout" }
         return try {
-            // Send stop command AND stop polling
-            val result = sendStopCommand()
+            // Send RESET command (0x0A) - matches web app and parent repo behavior
+            // This fully stops the workout on the machine
+            val resetCmd = BlePacketFactory.createResetCommand()
+            log.d { "Sending RESET command (0x0A)..." }
+            sendWorkoutCommand(resetCmd)
+            kotlinx.coroutines.delay(50)  // Short delay for machine to process
 
             // Stop all polling when workout ends
             stopPolling()
 
-            result
+            Result.success(Unit)
         } catch (e: Exception) {
             log.e { "Failed to stop workout: ${e.message}" }
             Result.failure(e)
@@ -1492,10 +1546,12 @@ class KableBleRepository : BleRepository {
     override suspend fun sendStopCommand(): Result<Unit> {
         log.i { "Sending stop command (polling continues)" }
         return try {
-            // Send stop command to machine WITHOUT stopping polling
-            // This allows Just Lift mode to continue monitoring for auto-start
-            val stopCmd = byteArrayOf(0x03, 0x00, 0x00, 0x00)  // Stop command
-            sendWorkoutCommand(stopCmd)
+            // Send StopPacket (0x50) - official app stop command
+            // This is a "soft stop" that releases tension but allows polling to continue
+            // Used for Just Lift mode where we need continuous polling for auto-start detection
+            val stopPacket = BlePacketFactory.createOfficialStopPacket()
+            log.d { "Sending StopPacket (0x50)..." }
+            sendWorkoutCommand(stopPacket)
         } catch (e: Exception) {
             log.e { "Failed to send stop command: ${e.message}" }
             Result.failure(e)
@@ -1609,10 +1665,12 @@ class KableBleRepository : BleRepository {
 
         monitorPollingJob?.cancel()
         diagnosticPollingJob?.cancel()
+        heuristicPollingJob?.cancel()
         heartbeatJob?.cancel()
 
         monitorPollingJob = null
         diagnosticPollingJob = null
+        heuristicPollingJob = null
         heartbeatJob = null
 
         val afterCancel = currentTimeMillis()
@@ -1644,6 +1702,8 @@ class KableBleRepository : BleRepository {
         monitorPollingJob = null
         diagnosticPollingJob?.cancel()
         diagnosticPollingJob = null
+        heuristicPollingJob?.cancel()
+        heuristicPollingJob = null
 
         // Disconnect and release the peripheral
         try {

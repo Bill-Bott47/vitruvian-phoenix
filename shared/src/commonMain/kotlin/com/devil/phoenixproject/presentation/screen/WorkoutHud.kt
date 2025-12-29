@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devil.phoenixproject.data.repository.ExerciseRepository
@@ -318,25 +319,31 @@ private fun ExecutionPage(
     ) {
         // Exercise Name and Set Counter (only shown for routines/single exercise, NOT Just Lift)
         // Display above the rep counter when exerciseName is available
+        // Sized larger to fill gap between top bar and rep counter
         if (!workoutParameters.isJustLift && exerciseName != null) {
-            // Exercise Name
+            // Exercise Name - large and prominent
             Text(
                 text = exerciseName,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp)
             )
 
-            // Set Counter: "Set X / Y"
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Set Counter: "Set X / Y" - prominent secondary text
             if (totalSets > 0) {
                 Text(
                     text = "Set ${currentSetIndex + 1} / $totalSets",
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
         }
 
         // Giant Rep Counter (matches parent repo style)
@@ -374,16 +381,18 @@ private fun ExecutionPage(
         if (metric != null) {
             // Current Load - show per-cable resistance (matching parent repo)
             // For Echo mode: use heuristic kgMax (actual measured force from device)
-            // For other modes: subtract baseline to show actual user effort
-            // The machine exerts ~4kg base tension per cable even at rest
+            // For other modes: use totalLoad / 2f (raw sensor average per cable)
+            //
+            // The heuristic data provides actual measured force via the machine's
+            // force telemetry (c7b73007-b245-4503-a1ed-9e4e97eb9802), polled at 4Hz.
+            // For Echo mode this is essential as the machine dynamically adjusts resistance.
+            // For other modes, totalLoad from the monitor characteristic is reliable.
             val perCableKg = if (isEchoMode && echoForceKgMax > 0f) {
                 echoForceKgMax
             } else {
-                // Subtract baseline (base tension) from each cable and average
-                // coerceAtLeast(0f) ensures we never show negative values
-                val adjustedLoadA = (metric.loadA - loadBaselineA).coerceAtLeast(0f)
-                val adjustedLoadB = (metric.loadB - loadBaselineB).coerceAtLeast(0f)
-                (adjustedLoadA + adjustedLoadB) / 2f
+                // Use totalLoad / 2f - matching parent repo exactly
+                // No baseline subtraction needed - the machine reports actual tension
+                metric.totalLoad / 2f
             }
             val targetWeight = workoutParameters.weightPerCableKg
             val gaugeMax = (targetWeight * 1.5f).coerceAtLeast(20f)
