@@ -483,7 +483,7 @@ fun VolumeVsIntensityCard(
                 ComboChart(
                     columnData = columnData,
                     lineData = lineData,
-                    columnLabel = "Volume (${if (weightUnit == WeightUnit.KG) "kg" else "lb"})",
+                    columnLabel = "Volume (${if (weightUnit == WeightUnit.KG) "kg" else "lbs"})",
                     lineLabel = "Max Weight",
                     modifier = Modifier.height(300.dp)
                 )

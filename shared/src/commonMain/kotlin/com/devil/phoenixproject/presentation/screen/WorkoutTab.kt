@@ -1340,7 +1340,7 @@ fun SetSummaryCard(
     val avgConcentric = kgToDisplay(maxOf(summary.avgForceConcentricA, summary.avgForceConcentricB), weightUnit)
     val avgEccentric = kgToDisplay(maxOf(summary.avgForceEccentricA, summary.avgForceEccentricB), weightUnit)
 
-    val unitLabel = if (weightUnit == WeightUnit.LB) "lb" else "kg"
+    val unitLabel = if (weightUnit == WeightUnit.LB) "lbs" else "kg"
 
     Column(
         modifier = Modifier.fillMaxWidth(),
