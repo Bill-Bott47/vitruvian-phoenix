@@ -55,8 +55,8 @@ fun HapticFeedbackEffect(
                 put(HapticEvent.REST_ENDING, soundPool.load(context, R.raw.restover, 1))
                 put(HapticEvent.DISCO_MODE_UNLOCKED, soundPool.load(context, R.raw.discomode, 1))
                 // BADGE_EARNED, PERSONAL_RECORD use random sounds from lists below
+                // REP_COUNT_ANNOUNCED uses indexed sounds from repCountSoundIds list
                 // ERROR has no sound
-                // REP_COUNT_ANNOUNCED is handled by separate audio system
             } catch (e: Exception) {
                 Logger.e(e) { "Failed to load sounds" }
             }
@@ -118,11 +118,46 @@ fun HapticFeedbackEffect(
         }
     }
 
+    // Load rep count announcement sounds (1-25)
+    val repCountSoundIds = remember(soundPool) {
+        mutableListOf<Int>().apply {
+            try {
+                add(soundPool.load(context, R.raw.rep_01, 1))
+                add(soundPool.load(context, R.raw.rep_02, 1))
+                add(soundPool.load(context, R.raw.rep_03, 1))
+                add(soundPool.load(context, R.raw.rep_04, 1))
+                add(soundPool.load(context, R.raw.rep_05, 1))
+                add(soundPool.load(context, R.raw.rep_06, 1))
+                add(soundPool.load(context, R.raw.rep_07, 1))
+                add(soundPool.load(context, R.raw.rep_08, 1))
+                add(soundPool.load(context, R.raw.rep_09, 1))
+                add(soundPool.load(context, R.raw.rep_10, 1))
+                add(soundPool.load(context, R.raw.rep_11, 1))
+                add(soundPool.load(context, R.raw.rep_12, 1))
+                add(soundPool.load(context, R.raw.rep_13, 1))
+                add(soundPool.load(context, R.raw.rep_14, 1))
+                add(soundPool.load(context, R.raw.rep_15, 1))
+                add(soundPool.load(context, R.raw.rep_16, 1))
+                add(soundPool.load(context, R.raw.rep_17, 1))
+                add(soundPool.load(context, R.raw.rep_18, 1))
+                add(soundPool.load(context, R.raw.rep_19, 1))
+                add(soundPool.load(context, R.raw.rep_20, 1))
+                add(soundPool.load(context, R.raw.rep_21, 1))
+                add(soundPool.load(context, R.raw.rep_22, 1))
+                add(soundPool.load(context, R.raw.rep_23, 1))
+                add(soundPool.load(context, R.raw.rep_24, 1))
+                add(soundPool.load(context, R.raw.rep_25, 1))
+            } catch (e: Exception) {
+                Logger.e(e) { "Failed to load rep count sounds" }
+            }
+        }
+    }
+
     // Collect haptic events and play feedback
     LaunchedEffect(hapticEvents) {
         hapticEvents.collect { event ->
             playHapticFeedback(event, hapticFeedback)
-            playSound(event, soundPool, soundIds, badgeSoundIds, prSoundIds)
+            playSound(event, soundPool, soundIds, badgeSoundIds, prSoundIds, repCountSoundIds)
         }
     }
 
@@ -172,10 +207,11 @@ private fun playSound(
     soundPool: SoundPool,
     soundIds: Map<HapticEvent, Int>,
     badgeSoundIds: List<Int>,
-    prSoundIds: List<Int>
+    prSoundIds: List<Int>,
+    repCountSoundIds: List<Int>
 ) {
-    // ERROR event has no sound, REP_COUNT_ANNOUNCED is handled by separate audio system
-    if (event is HapticEvent.ERROR || event is HapticEvent.REP_COUNT_ANNOUNCED) return
+    // ERROR event has no sound
+    if (event is HapticEvent.ERROR) return
 
     val soundId = when (event) {
         is HapticEvent.BADGE_EARNED -> {
@@ -188,7 +224,12 @@ private fun playSound(
                 prSoundIds[Random.nextInt(prSoundIds.size)]
             } else null
         }
-        is HapticEvent.REP_COUNT_ANNOUNCED -> null // Handled by separate audio system
+        is HapticEvent.REP_COUNT_ANNOUNCED -> {
+            val index = event.repNumber - 1
+            if (index in repCountSoundIds.indices) {
+                repCountSoundIds[index]
+            } else null
+        }
         else -> soundIds[event]
     } ?: return
 
