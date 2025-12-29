@@ -2,19 +2,25 @@
 
 package com.devil.phoenixproject.presentation.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.devil.phoenixproject.data.repository.BadgeWithProgress
 import com.devil.phoenixproject.data.repository.ExerciseRepository
 import com.devil.phoenixproject.domain.model.PersonalRecord
 import com.devil.phoenixproject.domain.model.WeightUnit
@@ -880,5 +886,174 @@ private fun LifetimeStatRow(
                 )
             }
         }
+    }
+}
+
+/**
+ * Next Badge Progress Card - shows the user's closest badges to being earned
+ *
+ * @param badgesWithProgress List of all badges with their progress
+ * @param onBadgeClick Callback when a badge is tapped (navigates to Badges screen)
+ * @param modifier Optional modifier
+ */
+@Composable
+fun NextBadgeProgressCard(
+    badgesWithProgress: List<BadgeWithProgress>,
+    onBadgeClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // Filter and sort badges:
+    // 1. Exclude earned badges
+    // 2. Exclude secret badges (isSecret = true)
+    // 3. Sort by progress percentage descending
+    // 4. Take top 3
+    val nextBadges = remember(badgesWithProgress) {
+        badgesWithProgress
+            .filter { !it.isEarned && !it.badge.isSecret }
+            .sortedByDescending { it.progressPercent }
+            .take(3)
+    }
+
+    // Don't show if no badges to display
+    if (nextBadges.isEmpty()) return
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onBadgeClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        "Next Badges",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Your closest achievements",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = "View all badges",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                nextBadges.forEach { badgeWithProgress ->
+                    NextBadgeProgressItem(badgeWithProgress = badgeWithProgress)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Individual badge progress item within the NextBadgeProgressCard
+ */
+@Composable
+private fun NextBadgeProgressItem(
+    badgeWithProgress: BadgeWithProgress,
+    modifier: Modifier = Modifier
+) {
+    val badge = badgeWithProgress.badge
+    val tierColor = Color(badge.tier.colorHex)
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Badge icon
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        listOf(tierColor.copy(alpha = 0.8f), tierColor.copy(alpha = 0.3f))
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = getBadgeIconForProgress(badge.iconResource),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        // Badge info and progress
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = badge.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Text(
+                    text = badge.getProgressDescription(badgeWithProgress.currentProgress),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Progress bar with tier color
+            LinearProgressIndicator(
+                progress = { badgeWithProgress.progressPercent },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = tierColor,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        }
+    }
+}
+
+/**
+ * Helper function to map badge icon resource to ImageVector
+ */
+private fun getBadgeIconForProgress(iconResource: String): ImageVector {
+    return when (iconResource) {
+        "fire" -> Icons.Default.LocalFireDepartment
+        "trophy" -> Icons.Default.EmojiEvents
+        "dumbbell" -> Icons.Default.FitnessCenter
+        "repeat" -> Icons.Default.Repeat
+        "compass" -> Icons.Default.Explore
+        "calendar" -> Icons.Default.CalendarMonth
+        "sun" -> Icons.Default.WbSunny
+        "moon" -> Icons.Default.NightsStay
+        "weight" -> Icons.Default.FitnessCenter
+        "lightning" -> Icons.Default.Bolt
+        "body" -> Icons.Default.Accessibility
+        "phoenix" -> Icons.Default.LocalFireDepartment
+        "shield" -> Icons.Default.Shield
+        "list" -> Icons.Default.Checklist
+        else -> Icons.Default.Star
     }
 }
