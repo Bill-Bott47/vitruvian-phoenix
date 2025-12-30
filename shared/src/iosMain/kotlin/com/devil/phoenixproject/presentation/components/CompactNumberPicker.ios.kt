@@ -89,6 +89,7 @@ actual fun CompactNumberPicker(
     // Inline editing state
     var isEditing by remember { mutableStateOf(false) }
     var inputText by remember { mutableStateOf("") }
+    var hasFocusedOnce by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
     // Format value for editing (without suffix)
@@ -125,9 +126,10 @@ actual fun CompactNumberPicker(
     // Focus the text field when editing starts
     LaunchedEffect(isEditing) {
         if (isEditing) {
+            hasFocusedOnce = false
             inputText = formatValueForEdit(value)
             // Small delay to ensure TextField is composed before requesting focus
-            kotlinx.coroutines.delay(50)
+            kotlinx.coroutines.delay(100)
             try { focusRequester.requestFocus() } catch (_: Exception) {}
         }
     }
@@ -243,7 +245,10 @@ actual fun CompactNumberPicker(
                                         .fillMaxWidth()
                                         .focusRequester(focusRequester)
                                         .onFocusChanged { focusState ->
-                                            if (!focusState.isFocused && isEditing) {
+                                            if (focusState.isFocused) {
+                                                hasFocusedOnce = true
+                                            } else if (hasFocusedOnce && isEditing) {
+                                                // Only commit if we actually had focus before losing it
                                                 commitEdit()
                                             }
                                         }
