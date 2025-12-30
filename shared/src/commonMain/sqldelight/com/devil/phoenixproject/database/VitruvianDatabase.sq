@@ -540,6 +540,12 @@ SELECT COUNT(*) FROM Superset WHERE routineId = ?;
 selectAllSupersetsSync:
 SELECT * FROM Superset;
 
+-- Update exercise superset reference (for migration and CRUD operations)
+updateExerciseSupersetRef:
+UPDATE RoutineExercise
+SET supersetId = ?, orderInSuperset = ?
+WHERE id = ?;
+
 -- Analytics Queries
 selectVolumeHistory:
 SELECT timestamp, totalReps, weightPerCableKg FROM WorkoutSession ORDER BY timestamp ASC;
