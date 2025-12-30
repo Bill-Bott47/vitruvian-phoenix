@@ -134,18 +134,19 @@ fun CycleEditorScreen(
                 actions = {
                     TextButton(onClick = {
                         scope.launch {
+                            val actualCycleId = if (cycleId == "new") generateUUID() else cycleId
                             val newCycle = TrainingCycle.create(
-                                id = if (cycleId == "new") generateUUID() else cycleId,
+                                id = actualCycleId,
                                 name = state.cycleName.ifBlank { "Unnamed Cycle" },
                                 description = state.description,
                                 days = state.days,
                                 isActive = false // Don't activate immediately
                             )
                             repository.saveCycle(newCycle)
-                            navController.popBackStack()
+                            navController.navigate(NavigationRoutes.CycleReview.createRoute(actualCycleId))
                         }
                     }) {
-                        Text("Save", fontWeight = FontWeight.Bold)
+                        Text("Review", fontWeight = FontWeight.Bold)
                     }
                 }
             )

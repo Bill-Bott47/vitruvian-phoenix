@@ -6,9 +6,17 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -17,6 +25,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import androidx.savedstate.read
 import com.devil.phoenixproject.data.repository.ExerciseRepository
+import com.devil.phoenixproject.data.repository.TrainingCycleRepository
+import com.devil.phoenixproject.domain.model.TrainingCycle
 import com.devil.phoenixproject.presentation.screen.*
 import com.devil.phoenixproject.presentation.viewmodel.MainViewModel
 import com.devil.phoenixproject.ui.theme.ThemeMode
@@ -359,6 +369,58 @@ fun NavGraph(
                 routines = routines,
                 initialDayCount = dayCount
             )
+        }
+
+        // Cycle Review - preview before final save
+        composable(
+            route = NavigationRoutes.CycleReview.route,
+            arguments = listOf(navArgument("cycleId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val cycleId = backStackEntry.arguments?.read { getStringOrNull("cycleId") } ?: return@composable
+            val routines by viewModel.routines.collectAsState()
+            val cycleRepository: TrainingCycleRepository = koinInject()
+
+            // Load cycle from repository
+            var cycle by remember { mutableStateOf<TrainingCycle?>(null) }
+            var isLoading by remember { mutableStateOf(true) }
+
+            LaunchedEffect(cycleId) {
+                isLoading = true
+                cycle = cycleRepository.getCycleById(cycleId)
+                isLoading = false
+            }
+
+            when {
+                isLoading -> {
+                    // Show loading indicator
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+                cycle == null -> {
+                    // Cycle not found - navigate back with error handling
+                    LaunchedEffect(Unit) {
+                        navController.popBackStack()
+                    }
+                }
+                else -> {
+                    CycleReviewScreen(
+                        cycleName = cycle!!.name,
+                        days = cycle!!.days,
+                        routines = routines,
+                        onBack = { navController.popBackStack() },
+                        onSave = {
+                            // Cycle is already saved, just navigate back to TrainingCycles
+                            navController.navigate(NavigationRoutes.TrainingCycles.route) {
+                                popUpTo(NavigationRoutes.TrainingCycles.route) { inclusive = true }
+                            }
+                        }
+                    )
+                }
+            }
         }
     }
 }
