@@ -983,6 +983,23 @@ class MainViewModel constructor(
         }
     }
 
+    /**
+     * Test sound playback - plays a sequence of sounds for testing audio configuration.
+     * Useful for verifying sounds play through DND and use correct volume stream.
+     */
+    fun testSounds() {
+        viewModelScope.launch {
+            // Play a variety of sounds with delays so user can hear each one
+            _hapticEvents.emit(HapticEvent.REP_COMPLETED)
+            kotlinx.coroutines.delay(800)
+            _hapticEvents.emit(HapticEvent.WARMUP_COMPLETE)
+            kotlinx.coroutines.delay(1000)
+            _hapticEvents.emit(HapticEvent.REP_COUNT_ANNOUNCED(5))
+            kotlinx.coroutines.delay(1000)
+            _hapticEvents.emit(HapticEvent.WORKOUT_COMPLETE)
+        }
+    }
+
     fun deleteAllWorkouts() {
         viewModelScope.launch { workoutRepository.deleteAllSessions() }
     }
@@ -1412,18 +1429,18 @@ class MainViewModel constructor(
     private fun getCurrentSupersetExercises(): List<RoutineExercise> {
         val routine = _loadedRoutine.value ?: return emptyList()
         val currentExercise = getCurrentExercise() ?: return emptyList()
-        val supersetId = currentExercise.supersetGroupId ?: return emptyList()
+        val supersetId = currentExercise.supersetId ?: return emptyList()
 
         return routine.exercises
-            .filter { it.supersetGroupId == supersetId }
-            .sortedBy { it.supersetOrder }
+            .filter { it.supersetId == supersetId }
+            .sortedBy { it.orderInSuperset }
     }
 
     /**
      * Check if the current exercise is part of a superset.
      */
     private fun isInSuperset(): Boolean {
-        return getCurrentExercise()?.supersetGroupId != null
+        return getCurrentExercise()?.supersetId != null
     }
 
     /**
@@ -1433,7 +1450,7 @@ class MainViewModel constructor(
     private fun getNextSupersetExerciseIndex(): Int? {
         val routine = _loadedRoutine.value ?: return null
         val currentExercise = getCurrentExercise() ?: return null
-        val supersetId = currentExercise.supersetGroupId ?: return null
+        val supersetId = currentExercise.supersetId ?: return null
 
         val supersetExercises = getCurrentSupersetExercises()
         val currentPositionInSuperset = supersetExercises.indexOf(currentExercise)
@@ -1463,7 +1480,7 @@ class MainViewModel constructor(
      */
     private fun isAtEndOfSupersetCycle(): Boolean {
         val currentExercise = getCurrentExercise() ?: return false
-        if (currentExercise.supersetGroupId == null) return false
+        if (currentExercise.supersetId == null) return false
 
         val supersetExercises = getCurrentSupersetExercises()
         return currentExercise == supersetExercises.lastOrNull()
@@ -1473,7 +1490,9 @@ class MainViewModel constructor(
      * Get the superset rest time (short rest between superset exercises).
      */
     private fun getSupersetRestSeconds(): Int {
-        return getCurrentExercise()?.supersetRestSeconds ?: 10
+        val routine = _loadedRoutine.value ?: return 10
+        val supersetId = getCurrentExercise()?.supersetId ?: return 10
+        return routine.supersets.find { it.id == supersetId }?.restBetweenSeconds ?: 10
     }
 
     /**
@@ -1483,13 +1502,13 @@ class MainViewModel constructor(
     private fun findNextExerciseAfterCurrent(): Int? {
         val routine = _loadedRoutine.value ?: return null
         val currentExercise = getCurrentExercise() ?: return null
-        val currentSupersetId = currentExercise.supersetGroupId
+        val currentSupersetId = currentExercise.supersetId
 
         // If in a superset, find the first exercise after the superset
         if (currentSupersetId != null) {
             val supersetExerciseIndices = routine.exercises
                 .mapIndexedNotNull { index, ex ->
-                    if (ex.supersetGroupId == currentSupersetId) index else null
+                    if (ex.supersetId == currentSupersetId) index else null
                 }
             val lastSupersetIndex = supersetExerciseIndices.maxOrNull() ?: _currentExerciseIndex.value
             val nextIndex = lastSupersetIndex + 1
@@ -2530,8 +2549,8 @@ class MainViewModel constructor(
             // Determine superset label for display
             val supersetLabel = if (isInSupersetTransition) {
                 val supersetExercises = getCurrentSupersetExercises()
-                val supersetGroupIds = routine?.getSupersetGroupIds()?.toList() ?: emptyList()
-                val groupIndex = supersetGroupIds.indexOf(currentExercise?.supersetGroupId)
+                val supersetIds = routine?.supersets?.map { it.id } ?: emptyList()
+                val groupIndex = supersetIds.indexOf(currentExercise?.supersetId)
                 if (groupIndex >= 0) "Superset ${('A' + groupIndex)}" else "Superset"
             } else null
 
