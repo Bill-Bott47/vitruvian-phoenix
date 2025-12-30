@@ -61,7 +61,12 @@ data class CycleDay(
     val dayNumber: Int,
     val name: String?,
     val routineId: String?,
-    val isRestDay: Boolean
+    val isRestDay: Boolean,
+    val echoLevel: EchoLevel? = null,
+    val eccentricLoadPercent: Int? = null,
+    val weightProgressionPercent: Float? = null,
+    val repModifier: Int? = null,
+    val restTimeOverrideSeconds: Int? = null
 ) {
     companion object {
         fun create(
@@ -70,28 +75,48 @@ data class CycleDay(
             dayNumber: Int,
             name: String? = null,
             routineId: String? = null,
-            isRestDay: Boolean = false
+            isRestDay: Boolean = false,
+            echoLevel: EchoLevel? = null,
+            eccentricLoadPercent: Int? = null,
+            weightProgressionPercent: Float? = null,
+            repModifier: Int? = null,
+            restTimeOverrideSeconds: Int? = null
         ) = CycleDay(
             id = id,
             cycleId = cycleId,
             dayNumber = dayNumber,
             name = name,
             routineId = routineId,
-            isRestDay = isRestDay
+            isRestDay = isRestDay,
+            echoLevel = echoLevel,
+            eccentricLoadPercent = eccentricLoadPercent,
+            weightProgressionPercent = weightProgressionPercent,
+            repModifier = repModifier,
+            restTimeOverrideSeconds = restTimeOverrideSeconds
         )
 
         fun restDay(
             id: String = generateUUID(),
             cycleId: String,
             dayNumber: Int,
-            name: String? = "Rest"
+            name: String? = "Rest",
+            echoLevel: EchoLevel? = null,
+            eccentricLoadPercent: Int? = null,
+            weightProgressionPercent: Float? = null,
+            repModifier: Int? = null,
+            restTimeOverrideSeconds: Int? = null
         ) = CycleDay(
             id = id,
             cycleId = cycleId,
             dayNumber = dayNumber,
             name = name,
             routineId = null,
-            isRestDay = true
+            isRestDay = true,
+            echoLevel = echoLevel,
+            eccentricLoadPercent = eccentricLoadPercent,
+            weightProgressionPercent = weightProgressionPercent,
+            repModifier = repModifier,
+            restTimeOverrideSeconds = restTimeOverrideSeconds
         )
     }
 }
