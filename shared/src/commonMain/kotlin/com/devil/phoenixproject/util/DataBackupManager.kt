@@ -383,7 +383,12 @@ abstract class BaseDataBackupManager(
                         day_number = day.dayNumber.toLong(),
                         name = day.name,
                         routine_id = day.routineId,
-                        is_rest_day = if (day.isRestDay) 1L else 0L
+                        is_rest_day = if (day.isRestDay) 1L else 0L,
+                        echo_level = null,
+                        eccentric_load_percent = null,
+                        weight_progression_percent = null,
+                        rep_modifier = null,
+                        rest_time_override_seconds = null
                     )
                     cycleDaysImported++
                 }
