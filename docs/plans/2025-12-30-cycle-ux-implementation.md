@@ -461,15 +461,15 @@ fun CycleDayConfigSheet(
     onApply: (CycleDay) -> Unit
 ) {
     // Determine which modifiers are relevant based on routine exercises
+    // Note: RoutineExercise.workoutType is WorkoutType (Echo or Program)
     val hasEchoMode = routine?.exercises?.any {
-        it.workoutMode?.contains("Echo", ignoreCase = true) == true
+        it.workoutType is WorkoutType.Echo
     } ?: false
     val hasOldSchool = routine?.exercises?.any {
-        it.workoutMode?.contains("Old School", ignoreCase = true) == true ||
-        it.workoutMode == null  // Default is Old School
+        it.workoutType is WorkoutType.Program
     } ?: true
     val allSetsAmrap = routine?.exercises?.all { exercise ->
-        exercise.sets.all { it.setType == SetType.AMRAP }
+        exercise.isAMRAP
     } ?: false
 
     var echoLevel by remember { mutableStateOf(day.echoLevel) }
