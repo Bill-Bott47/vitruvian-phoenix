@@ -140,7 +140,7 @@ fun TrainingCyclesScreen(
                     title = "No Training Cycles Yet",
                     message = "Create a rolling workout schedule that adapts to your life, not the calendar",
                     actionText = "Create Your First Cycle",
-                    onAction = { showTemplateDialog = true }
+                    onAction = { navController.navigate(NavigationRoutes.DayCountPicker.route) }
                 )
             }
         } else {
@@ -231,7 +231,7 @@ fun TrainingCyclesScreen(
 
         // FAB for creating new cycle
         FloatingActionButton(
-            onClick = { showTemplateDialog = true },
+            onClick = { navController.navigate(NavigationRoutes.DayCountPicker.route) },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
