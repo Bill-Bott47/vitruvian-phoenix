@@ -139,6 +139,7 @@ fun HistoryTab(
                                 groupedItem = item,
                                 weightUnit = weightUnit,
                                 formatWeight = formatWeight,
+                                kgToDisplay = kgToDisplay,
                                 exerciseRepository = exerciseRepository,
                                 onDelete = { sessionId -> onDeleteWorkout(sessionId) }
                             )
@@ -483,18 +484,18 @@ fun GroupedRoutineCard(
     groupedItem: com.devil.phoenixproject.presentation.viewmodel.GroupedRoutineHistoryItem,
     weightUnit: WeightUnit,
     formatWeight: (Float, WeightUnit) -> String,
+    kgToDisplay: (Float, WeightUnit) -> Float,
     exerciseRepository: com.devil.phoenixproject.data.repository.ExerciseRepository,
     onDelete: (String) -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var isPressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.95f else 1f, // Material 3 Expressive: More scale (was 0.98f)
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioLowBouncy, // Material 3 Expressive: More bouncy (was MediumBouncy)
-            stiffness = Spring.StiffnessLow // Material 3 Expressive: Springy feel (was 400f)
-        ),
-        label = "scale"
+    var isExpanded by remember { mutableStateOf(false) }
+
+    // Chevron rotation animation
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        animationSpec = tween(300),
+        label = "chevron"
     )
 
     // Group sessions by exerciseId and use exerciseName directly (no DB lookup needed!)
@@ -520,10 +521,9 @@ fun GroupedRoutineCard(
     }
 
     Card(
-        onClick = { isPressed = true },
+        onClick = { isExpanded = !isExpanded },
         modifier = Modifier
             .fillMaxWidth()
-            .scale(scale)
             .shadow(8.dp, RoundedCornerShape(20.dp)), // Material 3 Expressive: More shadow, more rounded
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest), // Material 3 Expressive: Higher contrast
         shape = RoundedCornerShape(20.dp), // Material 3 Expressive: More rounded (was 16dp)
@@ -535,13 +535,25 @@ fun GroupedRoutineCard(
                 .fillMaxWidth()
                 .padding(Spacing.medium)
         ) {
-            // Header: "Daily Routine"
-            Text(
-                "Daily Routine",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
+            // Header: "Daily Routine" with chevron
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Daily Routine",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    modifier = Modifier.rotate(chevronRotation),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             Spacer(modifier = Modifier.height(Spacing.small))
 
@@ -671,6 +683,75 @@ fun GroupedRoutineCard(
                 }
             }
 
+            // Expandable summary section
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                Column(modifier = Modifier.padding(top = Spacing.medium)) {
+                    HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(modifier = Modifier.height(Spacing.medium))
+
+                    Text(
+                        "Detailed Set Metrics",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(Spacing.small))
+
+                    groupedItem.sessions.forEachIndexed { index, session ->
+                        val summary = session.toSetSummary()
+
+                        Text(
+                            session.exerciseName ?: "Unknown Exercise",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(Spacing.small))
+
+                        if (summary != null) {
+                            SetSummaryCard(
+                                summary = summary,
+                                workoutMode = session.mode,
+                                weightUnit = weightUnit,
+                                kgToDisplay = kgToDisplay,
+                                formatWeight = formatWeight,
+                                onContinue = { },
+                                autoplayEnabled = false,
+                                isHistoryView = true,
+                                savedRpe = session.rpe
+                            )
+                        } else {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(Spacing.medium),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.width(Spacing.small))
+                                    Text(
+                                        "Detailed metrics available for workouts after v0.2.1",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        if (index < groupedItem.sessions.size - 1) {
+                            Spacer(modifier = Modifier.height(Spacing.medium))
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(Spacing.small))
 
             // Divider
@@ -765,13 +846,6 @@ fun GroupedRoutineCard(
                 }
             }
         )
-    }
-
-    LaunchedEffect(isPressed) {
-        if (isPressed) {
-            kotlinx.coroutines.delay(100)
-            isPressed = false
-        }
     }
 }
 
