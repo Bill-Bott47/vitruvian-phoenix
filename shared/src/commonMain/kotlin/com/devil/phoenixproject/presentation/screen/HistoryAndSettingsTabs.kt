@@ -1,5 +1,8 @@
 package com.devil.phoenixproject.presentation.screen
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -35,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.devil.phoenixproject.data.repository.ExerciseRepository
 import com.devil.phoenixproject.domain.model.WeightUnit
 import com.devil.phoenixproject.domain.model.WorkoutSession
+import com.devil.phoenixproject.domain.model.toSetSummary
 import com.devil.phoenixproject.presentation.viewmodel.HistoryItem
 import com.devil.phoenixproject.util.ColorScheme
 import com.devil.phoenixproject.util.ColorSchemes
@@ -48,6 +52,7 @@ fun HistoryTab(
     groupedWorkoutHistory: List<HistoryItem>,
     weightUnit: WeightUnit,
     formatWeight: (Float, WeightUnit) -> String,
+    kgToDisplay: (Float, WeightUnit) -> Float,
     onDeleteWorkout: (String) -> Unit,
     exerciseRepository: ExerciseRepository,
     onRefresh: () -> Unit = {},
@@ -124,6 +129,7 @@ fun HistoryTab(
                                 session = item.session,
                                 weightUnit = weightUnit,
                                 formatWeight = formatWeight,
+                                kgToDisplay = kgToDisplay,
                                 exerciseRepository = exerciseRepository,
                                 onDelete = { onDeleteWorkout(item.session.id) }
                             )
@@ -150,28 +156,27 @@ fun WorkoutHistoryCard(
     session: WorkoutSession,
     weightUnit: WeightUnit,
     formatWeight: (Float, WeightUnit) -> String,
+    kgToDisplay: (Float, WeightUnit) -> Float,
     exerciseRepository: com.devil.phoenixproject.data.repository.ExerciseRepository,
     onDelete: () -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var isPressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.95f else 1f, // Material 3 Expressive: More scale (was 0.98f)
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioLowBouncy, // Material 3 Expressive: More bouncy (was MediumBouncy)
-            stiffness = Spring.StiffnessLow // Material 3 Expressive: Springy feel (was 400f)
-        ),
-        label = "scale"
+    var isExpanded by remember { mutableStateOf(false) }
+
+    // Chevron rotation animation
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        animationSpec = tween(300),
+        label = "chevron"
     )
 
     // Get exercise name from session (no DB lookup needed!)
     val exerciseName = session.exerciseName ?: if (session.isJustLift) "Just Lift" else "Unknown Exercise"
 
     Card(
-        onClick = { isPressed = true },
+        onClick = { isExpanded = !isExpanded },
         modifier = Modifier
             .fillMaxWidth()
-            .scale(scale)
             .shadow(8.dp, RoundedCornerShape(20.dp)), // Material 3 Expressive: More shadow, more rounded
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest), // Material 3 Expressive: Higher contrast
         shape = RoundedCornerShape(20.dp), // Material 3 Expressive: More rounded (was 16dp)
@@ -183,13 +188,25 @@ fun WorkoutHistoryCard(
                 .fillMaxWidth()
                 .padding(Spacing.medium)
         ) {
-            // Header: "Single Exercise"
-            Text(
-                "Single Exercise",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
+            // Header: "Single Exercise" with chevron
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Single Exercise",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    modifier = Modifier.rotate(chevronRotation),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             Spacer(modifier = Modifier.height(Spacing.small))
 
@@ -291,6 +308,66 @@ fun WorkoutHistoryCard(
                 )
             }
 
+            // Expandable summary section
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                Column(
+                    modifier = Modifier.padding(top = Spacing.medium)
+                ) {
+                    HorizontalDivider(
+                        thickness = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+                    Spacer(modifier = Modifier.height(Spacing.medium))
+
+                    val summary = session.toSetSummary()
+                    if (summary != null) {
+                        SetSummaryCard(
+                            summary = summary,
+                            workoutMode = session.mode,
+                            weightUnit = weightUnit,
+                            kgToDisplay = kgToDisplay,
+                            formatWeight = formatWeight,
+                            onContinue = { },
+                            autoplayEnabled = false,
+                            isHistoryView = true,
+                            savedRpe = session.rpe
+                        )
+                    } else {
+                        // Pre-v0.2.1 session - show message
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(Spacing.medium),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(Spacing.small))
+                                Text(
+                                    "Detailed metrics available for workouts after v0.2.1",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(Spacing.small))
 
             // Divider
@@ -382,13 +459,6 @@ fun WorkoutHistoryCard(
                 }
             }
         )
-    }
-
-    LaunchedEffect(isPressed) {
-        if (isPressed) {
-            kotlinx.coroutines.delay(100)
-            isPressed = false
-        }
     }
 }
 
