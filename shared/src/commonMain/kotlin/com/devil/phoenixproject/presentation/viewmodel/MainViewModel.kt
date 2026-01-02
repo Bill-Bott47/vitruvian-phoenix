@@ -12,6 +12,7 @@ import com.devil.phoenixproject.data.repository.HandleState
 import com.devil.phoenixproject.data.repository.PersonalRecordRepository
 import com.devil.phoenixproject.data.repository.RepNotification
 import com.devil.phoenixproject.data.repository.ScannedDevice
+import com.devil.phoenixproject.data.repository.TrainingCycleRepository
 import com.devil.phoenixproject.data.repository.WorkoutRepository
 import co.touchlab.kermit.Logger
 import com.devil.phoenixproject.domain.model.*
@@ -79,7 +80,8 @@ class MainViewModel constructor(
     val personalRecordRepository: PersonalRecordRepository,
     private val repCounter: RepCounterFromMachine,
     private val preferencesManager: PreferencesManager,
-    private val gamificationRepository: GamificationRepository
+    private val gamificationRepository: GamificationRepository,
+    private val trainingCycleRepository: TrainingCycleRepository
 ) : ViewModel() {
 
     companion object {
@@ -377,6 +379,10 @@ class MainViewModel constructor(
 
     private var currentRoutineSessionId: String? = null
     private var currentRoutineName: String? = null
+
+    // Training Cycle context for tracking cycle progress when workout completes
+    private var activeCycleId: String? = null
+    private var activeCycleDayNumber: Int? = null
 
     private var autoStopStartTime: Long? = null
     private var autoStopTriggered = false
@@ -892,6 +898,18 @@ class MainViewModel constructor(
                  exerciseRepository.getExerciseById(exerciseId)?.name
              }
 
+             // Calculate summary metrics for persistence and display
+             val metrics = collectedMetrics.toList()
+             val isEcho = params.workoutType is WorkoutType.Echo
+             val summary = calculateSetSummaryMetrics(
+                 metrics = metrics,
+                 repCount = repCount.totalReps,
+                 fallbackWeightKg = params.weightPerCableKg,
+                 isEchoMode = isEcho,
+                 warmupRepsCount = repCount.warmupReps,
+                 workingRepsCount = repCount.workingReps
+             )
+
              val session = WorkoutSession(
                  timestamp = workoutStartTime,
                  mode = params.workoutType.displayName,
@@ -905,7 +923,24 @@ class MainViewModel constructor(
                  exerciseId = params.selectedExerciseId,
                  exerciseName = exerciseName,
                  routineSessionId = currentRoutineSessionId,
-                 routineName = currentRoutineName
+                 routineName = currentRoutineName,
+                 // Set Summary Metrics (v0.2.1+)
+                 peakForceConcentricA = summary.peakForceConcentricA,
+                 peakForceConcentricB = summary.peakForceConcentricB,
+                 peakForceEccentricA = summary.peakForceEccentricA,
+                 peakForceEccentricB = summary.peakForceEccentricB,
+                 avgForceConcentricA = summary.avgForceConcentricA,
+                 avgForceConcentricB = summary.avgForceConcentricB,
+                 avgForceEccentricA = summary.avgForceEccentricA,
+                 avgForceEccentricB = summary.avgForceEccentricB,
+                 heaviestLiftKg = summary.heaviestLiftKgPerCable,
+                 totalVolumeKg = summary.totalVolumeKg,
+                 estimatedCalories = summary.estimatedCalories,
+                 warmupAvgWeightKg = if (isEcho) summary.warmupAvgWeightKg else null,
+                 workingAvgWeightKg = if (isEcho) summary.workingAvgWeightKg else null,
+                 burnoutAvgWeightKg = if (isEcho) summary.burnoutAvgWeightKg else null,
+                 peakWeightKg = if (isEcho) summary.peakWeightKg else null,
+                 rpe = _currentSetRpe.value
              )
              workoutRepository.saveSession(session)
 
@@ -919,16 +954,6 @@ class MainViewModel constructor(
              }
 
              // Show Summary
-             val metrics = collectedMetrics.toList()
-             val isEcho = params.workoutType is WorkoutType.Echo
-             val summary = calculateSetSummaryMetrics(
-                 metrics = metrics,
-                 repCount = repCount.totalReps,
-                 fallbackWeightKg = params.weightPerCableKg,
-                 isEchoMode = isEcho,
-                 warmupRepsCount = repCount.warmupReps,
-                 workingRepsCount = repCount.workingReps
-             )
              _workoutState.value = summary
         }
     }
@@ -1443,12 +1468,36 @@ class MainViewModel constructor(
     fun loadRoutineById(routineId: String) {
         val routine = _routines.value.find { it.id == routineId }
         if (routine != null) {
+            clearCycleContext()  // Ensure non-cycle workouts don't update cycle progress
             loadRoutine(routine)
         }
     }
 
+    /**
+     * Load a routine from a training cycle context.
+     * This tracks the cycle and day so we can mark the day as completed when the workout finishes.
+     */
+    fun loadRoutineFromCycle(routineId: String, cycleId: String, dayNumber: Int) {
+        val routine = _routines.value.find { it.id == routineId }
+        if (routine != null) {
+            activeCycleId = cycleId
+            activeCycleDayNumber = dayNumber
+            Logger.d { "Loading routine from cycle: cycleId=$cycleId, dayNumber=$dayNumber" }
+            loadRoutine(routine)
+        }
+    }
+
+    /**
+     * Clear the active cycle context (e.g., when starting a non-cycle workout).
+     */
+    fun clearCycleContext() {
+        activeCycleId = null
+        activeCycleDayNumber = null
+    }
+
     fun clearLoadedRoutine() {
         _loadedRoutine.value = null
+        clearCycleContext()
     }
 
     fun getCurrentExercise(): RoutineExercise? {
@@ -1465,18 +1514,18 @@ class MainViewModel constructor(
     private fun getCurrentSupersetExercises(): List<RoutineExercise> {
         val routine = _loadedRoutine.value ?: return emptyList()
         val currentExercise = getCurrentExercise() ?: return emptyList()
-        val supersetId = currentExercise.supersetGroupId ?: return emptyList()
+        val supersetId = currentExercise.supersetId ?: return emptyList()
 
         return routine.exercises
-            .filter { it.supersetGroupId == supersetId }
-            .sortedBy { it.supersetOrder }
+            .filter { it.supersetId == supersetId }
+            .sortedBy { it.orderInSuperset }
     }
 
     /**
      * Check if the current exercise is part of a superset.
      */
     private fun isInSuperset(): Boolean {
-        return getCurrentExercise()?.supersetGroupId != null
+        return getCurrentExercise()?.supersetId != null
     }
 
     /**
@@ -1486,7 +1535,7 @@ class MainViewModel constructor(
     private fun getNextSupersetExerciseIndex(): Int? {
         val routine = _loadedRoutine.value ?: return null
         val currentExercise = getCurrentExercise() ?: return null
-        val supersetId = currentExercise.supersetGroupId ?: return null
+        val supersetId = currentExercise.supersetId ?: return null
 
         val supersetExercises = getCurrentSupersetExercises()
         val currentPositionInSuperset = supersetExercises.indexOf(currentExercise)
@@ -1516,7 +1565,7 @@ class MainViewModel constructor(
      */
     private fun isAtEndOfSupersetCycle(): Boolean {
         val currentExercise = getCurrentExercise() ?: return false
-        if (currentExercise.supersetGroupId == null) return false
+        if (currentExercise.supersetId == null) return false
 
         val supersetExercises = getCurrentSupersetExercises()
         return currentExercise == supersetExercises.lastOrNull()
@@ -1526,7 +1575,9 @@ class MainViewModel constructor(
      * Get the superset rest time (short rest between superset exercises).
      */
     private fun getSupersetRestSeconds(): Int {
-        return getCurrentExercise()?.supersetRestSeconds ?: 10
+        val routine = _loadedRoutine.value ?: return 10
+        val supersetId = getCurrentExercise()?.supersetId ?: return 10
+        return routine.supersets.find { it.id == supersetId }?.restBetweenSeconds ?: 10
     }
 
     /**
@@ -1536,13 +1587,13 @@ class MainViewModel constructor(
     private fun findNextExerciseAfterCurrent(): Int? {
         val routine = _loadedRoutine.value ?: return null
         val currentExercise = getCurrentExercise() ?: return null
-        val currentSupersetId = currentExercise.supersetGroupId
+        val currentSupersetId = currentExercise.supersetId
 
         // If in a superset, find the first exercise after the superset
         if (currentSupersetId != null) {
             val supersetExerciseIndices = routine.exercises
                 .mapIndexedNotNull { index, ex ->
-                    if (ex.supersetGroupId == currentSupersetId) index else null
+                    if (ex.supersetId == currentSupersetId) index else null
                 }
             val lastSupersetIndex = supersetExerciseIndices.maxOrNull() ?: _currentExerciseIndex.value
             val nextIndex = lastSupersetIndex + 1
@@ -1552,6 +1603,111 @@ class MainViewModel constructor(
         // Not in a superset - just go to next index
         val nextIndex = _currentExerciseIndex.value + 1
         return if (nextIndex < routine.exercises.size) nextIndex else null
+    }
+
+    // ========== Superset CRUD Operations ==========
+
+    /**
+     * Create a new superset in a routine.
+     * Auto-assigns next available color and generates name.
+     */
+    suspend fun createSuperset(
+        routineId: String,
+        name: String? = null,
+        exercises: List<RoutineExercise> = emptyList()
+    ): Superset {
+        val routine = getRoutineById(routineId) ?: throw IllegalArgumentException("Routine not found")
+        val existingColors = routine.supersets.map { it.colorIndex }.toSet()
+        val colorIndex = SupersetColors.next(existingColors)
+        val supersetCount = routine.supersets.size
+        val autoName = name ?: "Superset ${'A' + supersetCount}"
+        val orderIndex = routine.getItems().maxOfOrNull { it.orderIndex }?.plus(1) ?: 0
+
+        val superset = Superset(
+            id = generateSupersetId(),
+            routineId = routineId,
+            name = autoName,
+            colorIndex = colorIndex,
+            restBetweenSeconds = 10,
+            orderIndex = orderIndex
+        )
+
+        // Save routine with new superset
+        val updatedSupersets = routine.supersets + superset
+        val updatedExercises = exercises.mapIndexed { index, exercise ->
+            exercise.copy(supersetId = superset.id, orderInSuperset = index)
+        } + routine.exercises.filter { it.id !in exercises.map { e -> e.id } }
+
+        val updatedRoutine = routine.copy(supersets = updatedSupersets, exercises = updatedExercises)
+        workoutRepository.updateRoutine(updatedRoutine)
+
+        return superset
+    }
+
+    /**
+     * Update superset properties (name, rest time, color).
+     */
+    suspend fun updateSuperset(routineId: String, superset: Superset) {
+        val routine = getRoutineById(routineId) ?: return
+        val updatedSupersets = routine.supersets.map {
+            if (it.id == superset.id) superset else it
+        }
+        val updatedRoutine = routine.copy(supersets = updatedSupersets)
+        workoutRepository.updateRoutine(updatedRoutine)
+    }
+
+    /**
+     * Delete a superset. Exercises become standalone.
+     */
+    suspend fun deleteSuperset(routineId: String, supersetId: String) {
+        val routine = getRoutineById(routineId) ?: return
+        val updatedSupersets = routine.supersets.filter { it.id != supersetId }
+        // Clear superset reference from exercises
+        val updatedExercises = routine.exercises.map { exercise ->
+            if (exercise.supersetId == supersetId) {
+                exercise.copy(supersetId = null, orderInSuperset = 0)
+            } else {
+                exercise
+            }
+        }
+        val updatedRoutine = routine.copy(supersets = updatedSupersets, exercises = updatedExercises)
+        workoutRepository.updateRoutine(updatedRoutine)
+    }
+
+    /**
+     * Move an exercise into a superset.
+     */
+    suspend fun addExerciseToSuperset(routineId: String, exerciseId: String, supersetId: String) {
+        val routine = getRoutineById(routineId) ?: return
+        val superset = routine.supersets.find { it.id == supersetId } ?: return
+        val currentExercisesInSuperset = routine.exercises.filter { it.supersetId == supersetId }
+        val newOrderInSuperset = currentExercisesInSuperset.maxOfOrNull { it.orderInSuperset }?.plus(1) ?: 0
+
+        val updatedExercises = routine.exercises.map { exercise ->
+            if (exercise.id == exerciseId) {
+                exercise.copy(supersetId = supersetId, orderInSuperset = newOrderInSuperset)
+            } else {
+                exercise
+            }
+        }
+        val updatedRoutine = routine.copy(exercises = updatedExercises)
+        workoutRepository.updateRoutine(updatedRoutine)
+    }
+
+    /**
+     * Remove an exercise from a superset (becomes standalone).
+     */
+    suspend fun removeExerciseFromSuperset(routineId: String, exerciseId: String) {
+        val routine = getRoutineById(routineId) ?: return
+        val updatedExercises = routine.exercises.map { exercise ->
+            if (exercise.id == exerciseId) {
+                exercise.copy(supersetId = null, orderInSuperset = 0)
+            } else {
+                exercise
+            }
+        }
+        val updatedRoutine = routine.copy(exercises = updatedExercises)
+        workoutRepository.updateRoutine(updatedRoutine)
     }
 
     // ========== Just Lift Features ==========
@@ -2200,6 +2356,17 @@ class MainViewModel constructor(
             exerciseRepository.getExerciseById(exerciseId)?.name
         }
 
+        // Calculate summary metrics for persistence
+        val isEchoMode = params.workoutType is WorkoutType.Echo
+        val summary = calculateSetSummaryMetrics(
+            metrics = metricsSnapshot,
+            repCount = working,
+            fallbackWeightKg = params.weightPerCableKg,
+            isEchoMode = isEchoMode,
+            warmupRepsCount = warmup,
+            workingRepsCount = working
+        )
+
         val session = WorkoutSession(
             id = sessionId,
             timestamp = workoutStartTime,
@@ -2216,7 +2383,24 @@ class MainViewModel constructor(
             exerciseId = params.selectedExerciseId,
             exerciseName = exerciseName,
             routineSessionId = currentRoutineSessionId,
-            routineName = currentRoutineName
+            routineName = currentRoutineName,
+            // Set Summary Metrics (v0.2.1+)
+            peakForceConcentricA = summary.peakForceConcentricA,
+            peakForceConcentricB = summary.peakForceConcentricB,
+            peakForceEccentricA = summary.peakForceEccentricA,
+            peakForceEccentricB = summary.peakForceEccentricB,
+            avgForceConcentricA = summary.avgForceConcentricA,
+            avgForceConcentricB = summary.avgForceConcentricB,
+            avgForceEccentricA = summary.avgForceEccentricA,
+            avgForceEccentricB = summary.avgForceEccentricB,
+            heaviestLiftKg = summary.heaviestLiftKgPerCable,
+            totalVolumeKg = summary.totalVolumeKg,
+            estimatedCalories = summary.estimatedCalories,
+            warmupAvgWeightKg = if (isEchoMode) summary.warmupAvgWeightKg else null,
+            workingAvgWeightKg = if (isEchoMode) summary.workingAvgWeightKg else null,
+            burnoutAvgWeightKg = if (isEchoMode) summary.burnoutAvgWeightKg else null,
+            peakWeightKg = if (isEchoMode) summary.peakWeightKg else null,
+            rpe = _currentSetRpe.value
         )
 
         workoutRepository.saveSession(session)
@@ -2277,6 +2461,42 @@ class MainViewModel constructor(
             saveJustLiftDefaultsFromWorkout()
         } else if (isSingleExerciseMode()) {
             saveSingleExerciseDefaultsFromWorkout()
+        }
+
+        // Update training cycle progress if this workout was started from a cycle
+        updateCycleProgressIfNeeded()
+    }
+
+    /**
+     * Update cycle progress when a workout is completed from a training cycle.
+     * Marks the day as completed and advances to the next day.
+     * If the user completes a day ahead of the current day, marks skipped days as missed.
+     */
+    private suspend fun updateCycleProgressIfNeeded() {
+        val cycleId = activeCycleId ?: return
+        val dayNumber = activeCycleDayNumber ?: return
+
+        // Clear cycle context immediately to prevent race conditions
+        activeCycleId = null
+        activeCycleDayNumber = null
+
+        try {
+            val cycle = trainingCycleRepository.getCycleById(cycleId)
+            val progress = trainingCycleRepository.getCycleProgress(cycleId)
+
+            if (cycle != null && progress != null) {
+                // Use the CycleProgress model method which handles:
+                // - Adding the day to completedDays set
+                // - Marking any skipped days as missed (in missedDays set)
+                // - Advancing to the next day
+                // - Handling rotation (reset sets when cycling back to Day 1)
+                val updated = progress.markDayCompleted(dayNumber, cycle.days.size)
+                trainingCycleRepository.updateCycleProgress(updated)
+
+                Logger.d { "Cycle progress updated: day $dayNumber completed, now on day ${updated.currentDayNumber}" }
+            }
+        } catch (e: Exception) {
+            Logger.e(e) { "Error updating cycle progress: ${e.message}" }
         }
     }
 
@@ -2583,8 +2803,8 @@ class MainViewModel constructor(
             // Determine superset label for display
             val supersetLabel = if (isInSupersetTransition) {
                 val supersetExercises = getCurrentSupersetExercises()
-                val supersetGroupIds = routine?.getSupersetGroupIds()?.toList() ?: emptyList()
-                val groupIndex = supersetGroupIds.indexOf(currentExercise?.supersetGroupId)
+                val supersetIds = routine?.supersets?.map { it.id } ?: emptyList()
+                val groupIndex = supersetIds.indexOf(currentExercise?.supersetId)
                 if (groupIndex >= 0) "Superset ${('A' + groupIndex)}" else "Superset"
             } else null
 

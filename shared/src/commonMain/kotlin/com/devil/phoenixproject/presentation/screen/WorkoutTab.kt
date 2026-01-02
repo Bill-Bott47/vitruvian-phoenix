@@ -1411,7 +1411,9 @@ fun SetSummaryCard(
     formatWeight: (Float, WeightUnit) -> String,
     onContinue: () -> Unit,
     autoplayEnabled: Boolean,
-    onRpeLogged: ((Int) -> Unit)? = null  // Optional RPE callback
+    onRpeLogged: ((Int) -> Unit)? = null,  // Optional RPE callback
+    isHistoryView: Boolean = false,  // Hide interactive elements when viewing from history
+    savedRpe: Int? = null  // Show saved RPE value in history view
 ) {
     // State for RPE tracking
     var loggedRpe by remember { mutableStateOf<Int?>(null) }
@@ -1582,8 +1584,38 @@ fun SetSummaryCard(
                 )
             }
 
-            // RPE Capture (optional) - shown if callback is provided
-            if (onRpeLogged != null) {
+            // RPE section - show read-only in history view, interactive in live view
+            if (isHistoryView && savedRpe != null) {
+                // Show saved RPE as read-only
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "RPE",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "$savedRpe/10",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            } else if (!isHistoryView && onRpeLogged != null) {
+                // RPE Capture (optional) - shown if callback is provided in live view
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -1623,27 +1655,29 @@ fun SetSummaryCard(
             }
         }
 
-        // Done/Continue button
-        Button(
-            onClick = onContinue,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(28.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary
-            )
-        ) {
-            Text(
-                text = if (autoplayEnabled && autoCountdown > 0) {
-                    "Done ($autoCountdown)"
-                } else {
-                    "Done"
-                },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimary
-            )
+        // Done/Continue button - only show in live view
+        if (!isHistoryView) {
+            Button(
+                onClick = onContinue,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text(
+                    text = if (autoplayEnabled && autoCountdown > 0) {
+                        "Done ($autoCountdown)"
+                    } else {
+                        "Done"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            }
         }
     }
 }
