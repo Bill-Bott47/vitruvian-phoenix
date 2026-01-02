@@ -1312,15 +1312,18 @@ fun SetSummaryCard(
     formatWeight: (Float, WeightUnit) -> String,
     onContinue: () -> Unit,
     autoplayEnabled: Boolean,
-    onRpeLogged: ((Int) -> Unit)? = null  // Optional RPE callback
+    onRpeLogged: ((Int) -> Unit)? = null,  // Optional RPE callback
+    isHistoryView: Boolean = false,  // Hide interactive elements when viewing from history
+    savedRpe: Int? = null  // Show saved RPE value in history view
 ) {
     // State for RPE tracking
     var loggedRpe by remember { mutableStateOf<Int?>(null) }
-    // Auto-continue countdown when autoplay is enabled
-    var autoCountdown by remember { mutableStateOf(if (autoplayEnabled) 10 else -1) }
+    // Auto-continue countdown when autoplay is enabled (only in live view)
+    var autoCountdown by remember { mutableStateOf(if (autoplayEnabled && !isHistoryView) 10 else -1) }
 
-    LaunchedEffect(autoplayEnabled) {
-        if (autoplayEnabled) {
+    // Only run countdown in live view
+    LaunchedEffect(autoplayEnabled, isHistoryView) {
+        if (autoplayEnabled && !isHistoryView) {
             autoCountdown = 10
             while (autoCountdown > 0) {
                 kotlinx.coroutines.delay(1000)
@@ -1483,8 +1486,38 @@ fun SetSummaryCard(
                 )
             }
 
-            // RPE Capture (optional) - shown if callback is provided
-            if (onRpeLogged != null) {
+            // RPE section - show read-only in history view, interactive in live view
+            if (isHistoryView && savedRpe != null) {
+                // Show saved RPE as read-only
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "RPE",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "$savedRpe/10",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            } else if (!isHistoryView && onRpeLogged != null) {
+                // RPE Capture (optional) - shown if callback is provided in live view
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -1524,27 +1557,29 @@ fun SetSummaryCard(
             }
         }
 
-        // Done/Continue button
-        Button(
-            onClick = onContinue,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(28.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary
-            )
-        ) {
-            Text(
-                text = if (autoplayEnabled && autoCountdown > 0) {
-                    "Done ($autoCountdown)"
-                } else {
-                    "Done"
-                },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimary
-            )
+        // Done/Continue button - only show in live view
+        if (!isHistoryView) {
+            Button(
+                onClick = onContinue,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text(
+                    text = if (autoplayEnabled && autoCountdown > 0) {
+                        "Done ($autoCountdown)"
+                    } else {
+                        "Done"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            }
         }
     }
 }
