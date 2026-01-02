@@ -399,6 +399,8 @@ class MainViewModel constructor(
     private var restTimerJob: Job? = null
     private var bodyweightTimerJob: Job? = null
     private var repEventsCollectionJob: Job? = null
+    // Track if current workout is duration-based (timed exercise) to skip ROM calibration and rep processing
+    private var isCurrentWorkoutTimed: Boolean = false
 
     init {
         Logger.d("MainViewModel initialized")
@@ -552,13 +554,58 @@ class MainViewModel constructor(
                 }
             }
         }
+
+        // Connection state observer for detecting connection loss during workout (Issue #42)
+        // When connection is lost during an active workout, show the ConnectionLostDialog
+        viewModelScope.launch {
+            var wasConnected = false
+            bleRepository.connectionState.collect { state ->
+                when (state) {
+                    is ConnectionState.Connected -> {
+                        wasConnected = true
+                        // Clear any previous connection lost alert when reconnected
+                        _connectionLostDuringWorkout.value = false
+                    }
+                    is ConnectionState.Disconnected, is ConnectionState.Error -> {
+                        // Only trigger alert if we were previously connected
+                        // and a workout is actively in progress (not in summary)
+                        // SetSummary is excluded since the summary screen doesn't need connection
+                        // and users need to interact with it to save workout history
+                        if (wasConnected) {
+                            val workoutActive = when (_workoutState.value) {
+                                is WorkoutState.Active,
+                                is WorkoutState.Countdown,
+                                is WorkoutState.Resting -> true
+                                else -> false
+                            }
+                            if (workoutActive) {
+                                Logger.w { "Connection lost during active workout! Showing reconnection dialog." }
+                                _connectionLostDuringWorkout.value = true
+                            }
+                        }
+                        wasConnected = false
+                    }
+                    else -> {
+                        // Scanning, Connecting - don't change wasConnected or alert state
+                    }
+                }
+            }
+        }
     }
 
     /**
      * Handle rep notification from the machine.
      * Updates rep counter and position ranges for visualization.
+     *
+     * Note: Skip processing for timed/duration-based exercises to avoid
+     * incorrect ROM calibration and potential crashes (Issue #41).
      */
     private fun handleRepNotification(notification: RepNotification) {
+        // Skip rep processing for timed exercises - they use duration, not rep counting
+        if (isCurrentWorkoutTimed) {
+            return
+        }
+
         val currentPositions = _currentMetric.value
 
         // Use machine's ROM and Set counters directly (official app method)
@@ -687,10 +734,15 @@ class MainViewModel constructor(
         viewModelScope.launch {
             val params = _workoutParameters.value
 
-            // Check for bodyweight exercise
+            // Check for bodyweight or timed exercise
             val currentExercise = _loadedRoutine.value?.exercises?.getOrNull(_currentExerciseIndex.value)
             val isBodyweight = isBodyweightExercise(currentExercise)
-            val bodyweightDuration = if (isBodyweight) currentExercise?.duration else null
+            val exerciseDuration = currentExercise?.duration?.takeIf { it > 0 }
+            val bodyweightDuration = if (isBodyweight) exerciseDuration else null
+
+            // Track if this is a timed cable exercise (not bodyweight, but has duration)
+            val isTimedCableExercise = !isBodyweight && exerciseDuration != null
+            isCurrentWorkoutTimed = exerciseDuration != null
 
             // For bodyweight exercises with duration, skip machine commands
             if (isBodyweight && bodyweightDuration != null) {
@@ -794,13 +846,19 @@ class MainViewModel constructor(
             } else {
                 repCounter.reset()
             }
+            // For timed cable exercises, skip ROM calibration (warmupTarget = 0)
             repCounter.configure(
-                warmupTarget = params.warmupReps,
+                warmupTarget = if (isTimedCableExercise) 0 else params.warmupReps,
                 workingTarget = params.reps,
                 isJustLift = isJustLiftMode,
                 stopAtTop = params.stopAtTop,
                 isAMRAP = params.isAMRAP
             )
+
+            // Log timed cable exercise detection
+            if (isTimedCableExercise) {
+                Logger.d { "Starting TIMED cable exercise: ${currentExercise?.exercise?.name} for ${exerciseDuration}s (no ROM calibration)" }
+            }
 
             // 6. Countdown (skipped for Just Lift auto-start)
             if (!skipCountdown && !isJustLiftMode) {
@@ -815,6 +873,15 @@ class MainViewModel constructor(
             workoutStartTime = currentTimeMillis()
             collectedMetrics.clear()  // Clear metrics from previous workout
             _hapticEvents.emit(HapticEvent.WORKOUT_START)
+
+            // For timed cable exercises, start auto-complete timer
+            if (isTimedCableExercise && exerciseDuration != null) {
+                bodyweightTimerJob?.cancel()
+                bodyweightTimerJob = viewModelScope.launch {
+                    delay(exerciseDuration * 1000L)
+                    handleSetCompletion()
+                }
+            }
 
             // Set initial baseline position for position bars calibration
             // This ensures bars start at 0% relative to the starting rope position
@@ -840,6 +907,9 @@ class MainViewModel constructor(
 
     fun stopWorkout() {
         viewModelScope.launch {
+             // Reset timed workout flag
+             isCurrentWorkoutTimed = false
+
              // Send RESET command (0x0A) to fully stop workout on machine
              // This matches parent repo and web app behavior
              bleRepository.stopWorkout()
@@ -1259,6 +1329,7 @@ class MainViewModel constructor(
     /**
      * Navigate to a specific exercise in the routine.
      * Saves progress of current exercise if any reps completed.
+     * If workout is currently Active, stops the machine first and waits for completion.
      */
     fun jumpToExercise(index: Int) {
         val routine = _loadedRoutine.value ?: return
@@ -1281,6 +1352,33 @@ class MainViewModel constructor(
         bodyweightTimerJob?.cancel()
         resetAutoStopState()
 
+        // If workout is Active, stop the machine before transitioning
+        // This prevents the machine from staying in an engaged state while UI shows idle
+        // IMPORTANT: Navigation must happen AFTER stop completes to avoid race conditions
+        // where the next startWorkout() sends commands while machine is still processing RESET
+        val wasActive = _workoutState.value is WorkoutState.Active
+        if (wasActive) {
+            viewModelScope.launch {
+                try {
+                    bleRepository.stopWorkout()
+                    Logger.d("MainViewModel") { "Stopped active workout before jumping to exercise $index" }
+                } catch (e: Exception) {
+                    Logger.w(e) { "Failed to stop workout before jump (non-fatal): ${e.message}" }
+                }
+                // Navigate AFTER stop completes to ensure machine is ready for new commands
+                navigateToExerciseInternal(routine, index)
+            }
+        } else {
+            // Not active, navigate immediately
+            navigateToExerciseInternal(routine, index)
+        }
+    }
+
+    /**
+     * Internal helper to perform the actual exercise navigation.
+     * Called either synchronously (when not active) or after stopWorkout completes (when active).
+     */
+    private fun navigateToExerciseInternal(routine: Routine, index: Int) {
         // Navigate to new exercise
         _currentExerciseIndex.value = index
         _currentSetIndex.value = 0
@@ -1406,10 +1504,14 @@ class MainViewModel constructor(
         val firstSetWeight = firstExercise.setWeightsPerCableKg.getOrNull(0)
             ?: firstExercise.weightPerCableKg
 
+        // Check if first exercise is duration-based (timed exercise)
+        val isDurationBased = firstExercise.duration != null && firstExercise.duration > 0
+
         Logger.d { "Loading routine: ${routine.name}" }
         Logger.d { "  First exercise: ${firstExercise.exercise.displayName}" }
         Logger.d { "  First set weight: ${firstSetWeight}kg, reps: $firstSetReps" }
         Logger.d { "  Workout type: ${firstExercise.workoutType.displayName}" }
+        Logger.d { "  Duration-based: $isDurationBased (duration=${firstExercise.duration})" }
 
         val params = WorkoutParameters(
             workoutType = firstExercise.workoutType,
@@ -1419,7 +1521,7 @@ class MainViewModel constructor(
             isJustLift = false,  // CRITICAL: Routines are NOT just lift mode
             useAutoStart = false,
             stopAtTop = stopAtTop.value,
-            warmupReps = _workoutParameters.value.warmupReps,
+            warmupReps = if (isDurationBased) 0 else _workoutParameters.value.warmupReps,
             isAMRAP = firstSetReps == null, // This SET is AMRAP if its reps is null
             selectedExerciseId = firstExercise.exercise.id,
             stallDetectionEnabled = firstExercise.stallDetectionEnabled
@@ -2195,6 +2297,9 @@ class MainViewModel constructor(
             val isJustLift = params.isJustLift
 
             Logger.d("handleSetCompletion: isJustLift=$isJustLift")
+
+            // Reset timed workout flag
+            isCurrentWorkoutTimed = false
 
             // Stop hardware - use stopWorkout() which sends RESET command (0x0A), delays 50ms, and STOPS polling
             // This matches parent repo behavior - polling must be fully stopped before restarting
