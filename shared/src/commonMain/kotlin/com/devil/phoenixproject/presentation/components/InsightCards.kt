@@ -533,9 +533,10 @@ fun WorkoutModeDistributionCard(
 
             if (modeData.isNotEmpty()) {
                 // Using MuscleGroupCircleChart as a donut chart
+                // Chart is now responsive and self-sizing for tablet support
                 MuscleGroupCircleChart(
                     data = modeData,
-                    modifier = Modifier.height(300.dp)
+                    modifier = Modifier.fillMaxWidth()
                 )
             } else {
                 Text(

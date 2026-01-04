@@ -6,6 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.min
@@ -74,99 +75,115 @@ fun MuscleGroupCircleChart(
         label = "chart_animation"
     )
 
-    Box(
+    // Use BoxWithConstraints to make chart responsive to screen size (tablet support)
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .height(280.dp) // Material 3 Expressive: Taller charts
             .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .then(
-                    if (onSegmentClick != null) {
-                        Modifier.pointerInput(data, normalizedData) {
-                            detectTapGestures { tapOffset ->
-                                val center = Offset(size.width / 2f, size.height / 2f)
-                                val radius = min(size.width, size.height).toFloat() / 2f
-                                val innerRadius = radius * 0.4f
-                                val strokeWidth = 24.dp.toPx()
+        // Calculate responsive chart size based on available width
+        // On phones (~360dp width), this gives ~280dp chart height
+        // On tablets (~800dp+ width), this scales up appropriately but caps at 400dp
+        val density = LocalDensity.current
+        val availableWidth = maxWidth
+        val chartSize = with(density) {
+            // Use 70% of available width, with min 240dp and max 400dp
+            val calculatedSize = availableWidth * 0.70f
+            calculatedSize.coerceIn(240.dp, 400.dp)
+        }
 
-                                // Calculate distance from center
-                                val dx = tapOffset.x - center.x
-                                val dy = tapOffset.y - center.y
-                                val distance = sqrt(dx * dx + dy * dy)
+        Box(
+            modifier = Modifier.size(chartSize),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .then(
+                        if (onSegmentClick != null) {
+                            Modifier.pointerInput(data, normalizedData) {
+                                detectTapGestures { tapOffset ->
+                                    val center = Offset(size.width / 2f, size.height / 2f)
+                                    val radius = min(size.width, size.height).toFloat() / 2f
+                                    val innerRadius = radius * 0.4f
+                                    val strokeWidth = 24.dp.toPx()
 
-                                // Check if tap is within the donut ring
-                                val outerEdge = radius
-                                val innerEdge = innerRadius
-                                if (distance >= innerEdge && distance <= outerEdge + strokeWidth / 2) {
-                                    // Calculate angle (convert to degrees, adjust for starting at top)
-                                    var angle = atan2(dy, dx) * (180.0 / PI).toFloat()
-                                    angle = (angle + 90f + 360f) % 360f // Adjust to start from top
+                                    // Calculate distance from center
+                                    val dx = tapOffset.x - center.x
+                                    val dy = tapOffset.y - center.y
+                                    val distance = sqrt(dx * dx + dy * dy)
 
-                                    // Find which segment was tapped
-                                    var cumulativeAngle = 0f
-                                    for ((label, percentage) in normalizedData) {
-                                        val sweepAngle = percentage * 360f
-                                        if (angle >= cumulativeAngle && angle < cumulativeAngle + sweepAngle) {
-                                            // Found the segment - get original value from data
-                                            val originalValue = data.find { it.first == label }?.second ?: percentage * total
-                                            onSegmentClick(label, originalValue)
-                                            break
+                                    // Check if tap is within the donut ring
+                                    val outerEdge = radius
+                                    val innerEdge = innerRadius
+                                    if (distance >= innerEdge && distance <= outerEdge + strokeWidth / 2) {
+                                        // Calculate angle (convert to degrees, adjust for starting at top)
+                                        var angle = atan2(dy, dx) * (180.0 / PI).toFloat()
+                                        angle = (angle + 90f + 360f) % 360f // Adjust to start from top
+
+                                        // Find which segment was tapped
+                                        var cumulativeAngle = 0f
+                                        for ((label, percentage) in normalizedData) {
+                                            val sweepAngle = percentage * 360f
+                                            if (angle >= cumulativeAngle && angle < cumulativeAngle + sweepAngle) {
+                                                // Found the segment - get original value from data
+                                                val originalValue = data.find { it.first == label }?.second ?: percentage * total
+                                                onSegmentClick(label, originalValue)
+                                                break
+                                            }
+                                            cumulativeAngle += sweepAngle
                                         }
-                                        cumulativeAngle += sweepAngle
                                     }
                                 }
                             }
+                        } else {
+                            Modifier
                         }
-                    } else {
-                        Modifier
-                    }
-                )
-        ) {
-            val surfaceColor = colorScheme.surface
-            val center = Offset(size.width / 2f, size.height / 2f)
-            val radius = size.minDimension / 2f
-            val innerRadius = radius * 0.4f // Donut chart style (40% inner radius)
-            val strokeWidth = 24.dp.toPx() // Material 3 Expressive: Thicker strokes
-            val spacing = 8.dp.toPx() // Material 3 Expressive: More spacing
-
-            var startAngle = -90f // Start from top
-
-            // Draw all donut segments
-            normalizedData.forEachIndexed { index, (_, percentage) ->
-                val sweepAngle = percentage * 360f * animationProgress
-                val color = colors[index % colors.size]
-
-                // Draw donut segment
-                drawArc(
-                    color = color,
-                    startAngle = startAngle,
-                    sweepAngle = maxOf(0f, sweepAngle - spacing),
-                    useCenter = false,
-                    topLeft = Offset(
-                        center.x - radius,
-                        center.y - radius
-                    ),
-                    size = Size(radius * 2f, radius * 2f),
-                    style = Stroke(
-                        width = strokeWidth,
-                        cap = StrokeCap.Round
                     )
+            ) {
+                val surfaceColor = colorScheme.surface
+                val center = Offset(size.width / 2f, size.height / 2f)
+                val radius = size.minDimension / 2f
+                val innerRadius = radius * 0.4f // Donut chart style (40% inner radius)
+                val strokeWidth = 24.dp.toPx() // Material 3 Expressive: Thicker strokes
+                val spacing = 8.dp.toPx() // Material 3 Expressive: More spacing
+
+                var startAngle = -90f // Start from top
+
+                // Draw all donut segments
+                normalizedData.forEachIndexed { index, (_, percentage) ->
+                    val sweepAngle = percentage * 360f * animationProgress
+                    val color = colors[index % colors.size]
+
+                    // Draw donut segment
+                    drawArc(
+                        color = color,
+                        startAngle = startAngle,
+                        sweepAngle = maxOf(0f, sweepAngle - spacing),
+                        useCenter = false,
+                        topLeft = Offset(
+                            center.x - radius,
+                            center.y - radius
+                        ),
+                        size = Size(radius * 2f, radius * 2f),
+                        style = Stroke(
+                            width = strokeWidth,
+                            cap = StrokeCap.Round
+                        )
+                    )
+
+                    startAngle += sweepAngle
+                }
+
+                // Draw inner circle once to create donut effect
+                drawCircle(
+                    color = surfaceColor,
+                    radius = innerRadius,
+                    center = center
                 )
-
-                startAngle += sweepAngle
             }
-
-            // Draw inner circle once to create donut effect
-            drawCircle(
-                color = surfaceColor,
-                radius = innerRadius,
-                center = center
-            )
         }
     }
 }
@@ -178,29 +195,42 @@ fun MuscleGroupCircleChart(
 private fun EmptyChartState(
     modifier: Modifier = Modifier
 ) {
-    Box(
+    // Use BoxWithConstraints for responsive sizing on tablets
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .height(280.dp)
             .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        // Match the responsive sizing logic from the main chart
+        val density = LocalDensity.current
+        val availableWidth = maxWidth
+        val chartSize = with(density) {
+            val calculatedSize = availableWidth * 0.70f
+            calculatedSize.coerceIn(240.dp, 400.dp)
+        }
+
+        Box(
+            modifier = Modifier.size(chartSize),
+            contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Default.PieChart,
-                contentDescription = "No data available",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.size(48.dp)
-            )
-            Text(
-                text = "No data available",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PieChart,
+                    contentDescription = "No data available",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.size(48.dp)
+                )
+                Text(
+                    text = "No data available",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
