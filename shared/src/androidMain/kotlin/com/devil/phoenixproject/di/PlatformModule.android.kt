@@ -11,6 +11,7 @@ import org.koin.android.ext.koin.androidContext
 import com.devil.phoenixproject.data.repository.BleRepository
 import com.devil.phoenixproject.data.repository.KableBleRepository
 import com.devil.phoenixproject.util.AndroidCsvExporter
+import com.devil.phoenixproject.util.ConnectivityChecker
 import com.devil.phoenixproject.util.CsvExporter
 
 actual val platformModule: Module = module {
@@ -21,4 +22,5 @@ actual val platformModule: Module = module {
         SharedPreferencesSettings(preferences)
     }
     single<CsvExporter> { AndroidCsvExporter(androidContext()) }
+    single { ConnectivityChecker(androidContext()) }
 }

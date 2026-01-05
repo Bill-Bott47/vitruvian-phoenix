@@ -9,6 +9,7 @@ import com.devil.phoenixproject.data.repository.*
 import com.devil.phoenixproject.data.sync.PortalApiClient
 import com.devil.phoenixproject.data.sync.PortalTokenStorage
 import com.devil.phoenixproject.data.sync.SyncManager
+import com.devil.phoenixproject.data.sync.SyncTriggerManager
 import com.devil.phoenixproject.ui.sync.LinkAccountViewModel
 import com.devil.phoenixproject.domain.subscription.SubscriptionManager
 import com.devil.phoenixproject.domain.usecase.ProgressionUseCase
@@ -58,6 +59,7 @@ val commonModule = module {
     }
     single<SyncRepository> { SqlDelightSyncRepository(get()) }
     single { SyncManager(get(), get(), get()) }
+    single { SyncTriggerManager(get(), get()) }
 
     // Preferences
     // Settings is provided by platformModule
