@@ -4,6 +4,7 @@ import com.devil.phoenixproject.portal.auth.AuthService
 import com.devil.phoenixproject.portal.db.DatabaseFactory
 import com.devil.phoenixproject.portal.routes.authRoutes
 import com.devil.phoenixproject.portal.routes.syncRoutes
+import com.devil.phoenixproject.portal.sync.SyncService
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -46,6 +47,7 @@ fun Application.module() {
     }
 
     val authService = AuthService()
+    val syncService = SyncService()
 
     install(CallLogging) {
         level = Level.INFO
@@ -98,6 +100,6 @@ fun Application.module() {
         }
 
         authRoutes(authService)
-        syncRoutes()
+        syncRoutes(authService, syncService)
     }
 }
