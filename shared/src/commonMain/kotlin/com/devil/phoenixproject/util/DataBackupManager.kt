@@ -66,7 +66,7 @@ abstract class BaseDataBackupManager(
         val metrics = queries.selectAllMetricsSync().executeAsList()
         val routines = queries.selectAllRoutinesSync().executeAsList()
         val routineExercises = queries.selectAllRoutineExercisesSync().executeAsList()
-        val personalRecords = queries.selectAllRecords { id, exerciseId, exerciseName, weight, reps, oneRepMax, achievedAt, workoutMode, prType, volume ->
+        val personalRecords = queries.selectAllRecords { id, exerciseId, exerciseName, weight, reps, oneRepMax, achievedAt, workoutMode, prType, volume, updatedAt, serverId, deletedAt ->
             PersonalRecordBackup(
                 id = id,
                 exerciseId = exerciseId,

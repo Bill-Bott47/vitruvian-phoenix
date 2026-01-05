@@ -46,7 +46,11 @@ class SqlDelightExerciseRepository(
         lastPerformed: Long?,
         aliases: String?,
         defaultCableConfig: String,
-        one_rep_max_kg: Double?
+        one_rep_max_kg: Double?,
+        // Sync fields (migration 6)
+        updatedAt: Long?,
+        serverId: String?,
+        deletedAt: Long?
     ): Exercise {
         return Exercise(
             id = id,
