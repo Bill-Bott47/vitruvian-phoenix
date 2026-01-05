@@ -208,3 +208,50 @@ object RoutineExercises : UUIDTable("routine_exercises") {
     val createdAt = timestamp("created_at")
     val updatedAt = timestamp("updated_at")
 }
+
+object CustomExercises : UUIDTable("custom_exercises") {
+    val userId = reference("user_id", Users)
+
+    // Sync metadata
+    val clientId = uuid("client_id").uniqueIndex()
+    val deviceId = uuid("device_id")
+    val deletedAt = timestamp("deleted_at").nullable()
+
+    // Exercise data
+    val name = varchar("name", 255)
+    val description = text("description").nullable()
+    val muscleGroup = varchar("muscle_group", 100)
+    val muscleGroups = varchar("muscle_groups", 500)
+    val muscles = varchar("muscles", 500).nullable()
+    val equipment = varchar("equipment", 100)
+    val movement = varchar("movement", 100).nullable()
+    val sidedness = varchar("sidedness", 50).nullable()
+    val grip = varchar("grip", 50).nullable()
+    val gripWidth = varchar("grip_width", 50).nullable()
+    val minRepRange = float("min_rep_range").nullable()
+    val aliases = text("aliases").nullable()
+    val defaultCableConfig = varchar("default_cable_config", 50)
+    val oneRepMaxKg = float("one_rep_max_kg").nullable()
+
+    // Timestamps
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
+}
+
+object MetricSamples : UUIDTable("metric_samples") {
+    val userId = reference("user_id", Users)
+    val sessionId = reference("session_id", WorkoutSessions)
+
+    // No sync metadata - these are bulk uploaded per session
+
+    // Sample data
+    val timestamp = long("timestamp")
+    val position = float("position").nullable()
+    val positionB = float("position_b").nullable()
+    val velocity = float("velocity").nullable()
+    val velocityB = float("velocity_b").nullable()
+    val load = float("load").nullable()
+    val loadB = float("load_b").nullable()
+    val power = float("power").nullable()
+    val status = integer("status").default(0)
+}
