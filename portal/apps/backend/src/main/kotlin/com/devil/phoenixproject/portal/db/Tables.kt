@@ -255,3 +255,52 @@ object MetricSamples : UUIDTable("metric_samples") {
     val power = float("power").nullable()
     val status = integer("status").default(0)
 }
+
+object EarnedBadges : UUIDTable("earned_badges") {
+    val userId = reference("user_id", Users)
+
+    // Sync metadata
+    val clientId = uuid("client_id").uniqueIndex()
+    val deviceId = uuid("device_id")
+    val deletedAt = timestamp("deleted_at").nullable()
+
+    // Badge data
+    val badgeId = varchar("badge_id", 100)
+    val earnedAt = long("earned_at")
+    val celebratedAt = long("celebrated_at").nullable()
+
+    // Timestamps
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
+}
+
+object GamificationStats : UUIDTable("gamification_stats") {
+    val userId = reference("user_id", Users).uniqueIndex()
+
+    // Sync metadata
+    val clientId = uuid("client_id").uniqueIndex()
+    val deviceId = uuid("device_id")
+
+    // Stats
+    val totalWorkouts = integer("total_workouts").default(0)
+    val totalReps = integer("total_reps").default(0)
+    val totalVolumeKg = integer("total_volume_kg").default(0)
+    val longestStreak = integer("longest_streak").default(0)
+    val currentStreak = integer("current_streak").default(0)
+    val uniqueExercisesUsed = integer("unique_exercises_used").default(0)
+    val prsAchieved = integer("prs_achieved").default(0)
+    val lastWorkoutDate = long("last_workout_date").nullable()
+    val streakStartDate = long("streak_start_date").nullable()
+
+    // Timestamps
+    val updatedAt = timestamp("updated_at")
+}
+
+object SyncDevices : UUIDTable("sync_devices") {
+    val userId = reference("user_id", Users)
+    val deviceId = uuid("device_id").uniqueIndex()
+    val deviceName = varchar("device_name", 255).nullable()
+    val platform = varchar("platform", 50) // "android" or "ios"
+    val lastSyncAt = timestamp("last_sync_at")
+    val createdAt = timestamp("created_at")
+}
