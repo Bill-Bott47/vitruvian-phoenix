@@ -16,48 +16,47 @@ fun Route.syncRoutes() {
 
             val request = call.receive<SyncPushRequest>()
 
-            // For now, just acknowledge all changes
+            // For now, just acknowledge all changes with empty mappings
             // Real implementation will:
             // 1. Validate auth
-            // 2. Check versions for conflicts
-            // 3. Apply changes to PostgreSQL
-            // 4. Return conflicts if any
+            // 2. Store data in PostgreSQL
+            // 3. Generate server IDs for new records
+            // 4. Return ID mappings
 
-            val accepted = request.changes.map { it.rowId }
-            val serverTime = System.currentTimeMillis()
+            val syncTime = System.currentTimeMillis()
 
             call.respond(
                 SyncPushResponse(
-                    accepted = accepted,
-                    conflicts = emptyList(),
-                    newCursor = serverTime.toString(),
-                    serverTime = serverTime
+                    syncTime = syncTime,
+                    idMappings = IdMappings()
                 )
             )
         }
 
         post("/pull") {
             // TODO: Validate JWT token
-            // TODO: Fetch changes since cursor
+            // TODO: Fetch changes since lastSync
 
             val request = call.receive<SyncPullRequest>()
 
             // For now, return empty changes
             call.respond(
                 SyncPullResponse(
-                    changes = emptyList(),
-                    newCursor = System.currentTimeMillis().toString(),
-                    hasMore = false
+                    syncTime = System.currentTimeMillis()
                 )
             )
         }
 
         get("/status") {
-            // Health check for sync service
-            call.respond(mapOf(
-                "status" to "operational",
-                "version" to "0.1.0"
-            ))
+            // TODO: Validate JWT token and return actual user status
+            call.respond(
+                SyncStatusResponse(
+                    lastSync = null,
+                    pendingChanges = 0,
+                    subscriptionStatus = "active",
+                    subscriptionExpiresAt = null
+                )
+            )
         }
     }
 }
