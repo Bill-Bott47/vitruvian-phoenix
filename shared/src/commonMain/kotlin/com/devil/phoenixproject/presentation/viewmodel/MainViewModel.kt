@@ -17,6 +17,7 @@ import com.devil.phoenixproject.data.repository.WorkoutRepository
 import co.touchlab.kermit.Logger
 import com.devil.phoenixproject.domain.model.*
 import com.devil.phoenixproject.domain.usecase.RepCounterFromMachine
+import com.devil.phoenixproject.data.sync.SyncTriggerManager
 import com.devil.phoenixproject.util.BlePacketFactory
 import com.devil.phoenixproject.util.KmpLocalDate
 import com.devil.phoenixproject.util.KmpUtils
@@ -81,7 +82,8 @@ class MainViewModel constructor(
     private val repCounter: RepCounterFromMachine,
     private val preferencesManager: PreferencesManager,
     private val gamificationRepository: GamificationRepository,
-    private val trainingCycleRepository: TrainingCycleRepository
+    private val trainingCycleRepository: TrainingCycleRepository,
+    private val syncTriggerManager: SyncTriggerManager
 ) : ViewModel() {
 
     companion object {
@@ -977,6 +979,11 @@ class MainViewModel constructor(
                  rpe = _currentSetRpe.value
              )
              workoutRepository.saveSession(session)
+
+             // Trigger sync after workout saved
+             viewModelScope.launch {
+                 syncTriggerManager.onWorkoutCompleted()
+             }
 
              // Save exercise defaults for next time (only for Just Lift and Single Exercise modes)
              // This mirrors the logic in saveWorkoutSession() to ensure defaults are saved
@@ -2445,6 +2452,11 @@ class MainViewModel constructor(
         )
 
         workoutRepository.saveSession(session)
+
+        // Trigger sync after workout saved
+        viewModelScope.launch {
+            syncTriggerManager.onWorkoutCompleted()
+        }
 
         if (metricsSnapshot.isNotEmpty()) {
             workoutRepository.saveMetrics(sessionId, metricsSnapshot)
