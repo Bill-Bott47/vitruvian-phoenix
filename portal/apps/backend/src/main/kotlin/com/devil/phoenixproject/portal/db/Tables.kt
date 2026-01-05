@@ -77,9 +77,56 @@ object WorkoutSessions : UUIDTable("workout_sessions") {
 
 object PersonalRecords : UUIDTable("personal_records") {
     val userId = reference("user_id", Users)
+
+    // Sync metadata
+    val clientId = uuid("client_id").uniqueIndex()
+    val deviceId = uuid("device_id")
+    val deletedAt = timestamp("deleted_at").nullable()
+
+    // PR data
+    val exerciseId = varchar("exercise_id", 255)
     val exerciseName = varchar("exercise_name", 255)
-    val recordType = varchar("record_type", 50)
-    val value = float("value")
-    val achievedAt = timestamp("achieved_at")
-    val sessionId = reference("session_id", WorkoutSessions).nullable()
+    val weight = float("weight")
+    val reps = integer("reps")
+    val oneRepMax = float("one_rep_max")
+    val achievedAt = long("achieved_at")
+    val workoutMode = varchar("workout_mode", 50)
+    val prType = varchar("pr_type", 50).default("MAX_WEIGHT")
+    val volume = float("volume").default(0f)
+    val sessionId = uuid("session_id").nullable()
+
+    // Timestamps
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
+}
+
+object PhaseStatistics : UUIDTable("phase_statistics") {
+    val userId = reference("user_id", Users)
+    val sessionId = reference("session_id", WorkoutSessions)
+
+    // Sync metadata
+    val clientId = uuid("client_id").uniqueIndex()
+    val deviceId = uuid("device_id")
+    val deletedAt = timestamp("deleted_at").nullable()
+
+    // Concentric phase
+    val concentricKgAvg = float("concentric_kg_avg")
+    val concentricKgMax = float("concentric_kg_max")
+    val concentricVelAvg = float("concentric_vel_avg")
+    val concentricVelMax = float("concentric_vel_max")
+    val concentricWattAvg = float("concentric_watt_avg")
+    val concentricWattMax = float("concentric_watt_max")
+
+    // Eccentric phase
+    val eccentricKgAvg = float("eccentric_kg_avg")
+    val eccentricKgMax = float("eccentric_kg_max")
+    val eccentricVelAvg = float("eccentric_vel_avg")
+    val eccentricVelMax = float("eccentric_vel_max")
+    val eccentricWattAvg = float("eccentric_watt_avg")
+    val eccentricWattMax = float("eccentric_watt_max")
+
+    // Timestamps
+    val timestamp = long("timestamp")
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
 }
