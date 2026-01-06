@@ -2601,6 +2601,8 @@ class MainViewModel constructor(
             gamificationRepository.updateStats()
             val newBadges = gamificationRepository.checkAndAwardBadges()
             if (newBadges.isNotEmpty()) {
+                // Emit single badge sound BEFORE badge list (batched celebration)
+                _hapticEvents.emit(HapticEvent.BADGE_EARNED)
                 _badgeEarnedEvents.emit(newBadges)
                 Logger.d("New badges earned: ${newBadges.map { it.name }}")
             }
