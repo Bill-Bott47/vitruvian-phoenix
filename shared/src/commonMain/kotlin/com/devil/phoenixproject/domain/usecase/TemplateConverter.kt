@@ -4,6 +4,22 @@ import com.devil.phoenixproject.data.repository.ExerciseRepository
 import com.devil.phoenixproject.domain.model.*
 
 /**
+ * Convert eccentric load percentage to EccentricLoad enum.
+ * Rounds to nearest supported value.
+ */
+private fun Int.toEccentricLoad(): EccentricLoad = when {
+    this <= 25 -> EccentricLoad.LOAD_0
+    this <= 62 -> EccentricLoad.LOAD_50
+    this <= 87 -> EccentricLoad.LOAD_75
+    this <= 105 -> EccentricLoad.LOAD_100
+    this <= 115 -> EccentricLoad.LOAD_110
+    this <= 125 -> EccentricLoad.LOAD_120
+    this <= 135 -> EccentricLoad.LOAD_130
+    this <= 145 -> EccentricLoad.LOAD_140
+    else -> EccentricLoad.LOAD_150
+}
+
+/**
  * Result of converting a CycleTemplate to concrete training cycle with routines.
  *
  * @param cycle The created TrainingCycle ready to save
@@ -58,20 +74,18 @@ class TemplateConverter(
      *    - Generates a UUID for the routine
      *    - Resolves all TemplateExercise names to actual Exercise entities
      *    - Creates RoutineExercise instances with proper configuration
-     *    - Calculates starting weights from 1RM values if provided
+     *    - Uses ExerciseConfig for mode, weight, echoLevel, and eccentricLoad settings
      *    - Creates PlannedSet instances for percentage-based sets (5/3/1)
      *    - Tracks any exercises that couldn't be found
      * 3. Returns ConversionResult with cycle, routines, and warnings
      *
      * @param template The cycle template to convert
-     * @param modeSelections User-selected modes for exercises (overrides template defaults)
-     * @param oneRepMaxValues 1RM values for exercises (used to calculate starting weights)
+     * @param exerciseConfigs User-configured settings for exercises (mode, weight, echoLevel, eccentricLoad)
      * @return ConversionResult containing the cycle, routines, and any warnings
      */
     suspend fun convert(
         template: CycleTemplate,
-        modeSelections: Map<String, ProgramMode> = emptyMap(),
-        oneRepMaxValues: Map<String, Float> = emptyMap()
+        exerciseConfigs: Map<String, ExerciseConfig> = emptyMap()
     ): ConversionResult {
         val cycleId = generateUUID()
         val warnings = mutableListOf<String>()
@@ -109,30 +123,32 @@ class TemplateConverter(
                     }
 
                     // Determine the workout mode:
-                    // 1. User selection (from ModeConfirmationScreen) takes priority
+                    // 1. User config (from ExerciseConfigModal) takes priority
                     // 2. Fall back to template's suggested mode
                     // 3. Default to OldSchool for bodyweight exercises (null suggested mode)
-                    val selectedMode = modeSelections[templateExercise.exerciseName]
+                    val config = exerciseConfigs[templateExercise.exerciseName]
+                    val selectedMode = config?.mode
                         ?: templateExercise.suggestedMode
                         ?: ProgramMode.OldSchool
 
-                    // Calculate starting weight from 1RM if available
+                    // Calculate starting weight
                     // For percentage-based exercises (5/3/1), weight varies per set so start at 0
-                    // For regular exercises, use 70% of 1RM as a reasonable starting point
+                    // For regular exercises, use configured weight or calculate from 1RM
                     val startingWeight = if (templateExercise.isPercentageBased) {
                         // Percentage-based exercises calculate weight per set during workout
                         0f
                     } else {
-                        // Look up 1RM from user input or from exercise library
-                        val oneRepMax = oneRepMaxValues[templateExercise.exerciseName]
-                            ?: exercise.oneRepMaxKg
-                            ?: 0f
-                        if (oneRepMax > 0f) {
-                            // Round to nearest 0.5kg for cleaner weights
-                            ((oneRepMax * DEFAULT_STARTING_WEIGHT_PERCENT) * 2).toInt() / 2f
-                        } else {
-                            0f
-                        }
+                        // Use configured weight directly if available, otherwise calculate from 1RM
+                        config?.weightPerCableKg?.takeIf { it > 0f }
+                            ?: run {
+                                val oneRepMax = exercise.oneRepMaxKg ?: 0f
+                                if (oneRepMax > 0f) {
+                                    // Round to nearest 0.5kg for cleaner weights
+                                    ((oneRepMax * DEFAULT_STARTING_WEIGHT_PERCENT) * 2).toInt() / 2f
+                                } else {
+                                    0f
+                                }
+                            }
                     }
 
                     // Create RoutineExercise with proper configuration
@@ -150,6 +166,8 @@ class TemplateConverter(
                         },
                         weightPerCableKg = startingWeight,
                         programMode = selectedMode,
+                        echoLevel = config?.echoLevel ?: EchoLevel.HARDER,
+                        eccentricLoad = config?.eccentricLoadPercent?.toEccentricLoad() ?: EccentricLoad.LOAD_100,
                         isAMRAP = templateExercise.percentageSets?.any { it.isAmrap } ?: false
                     )
 

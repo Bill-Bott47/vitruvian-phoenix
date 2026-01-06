@@ -338,34 +338,29 @@ fun TrainingCyclesScreen(
                                 }
                             }
 
-                            // 2. Extract mode selections from ExerciseConfig for TemplateConverter
-                            // (Until TemplateConverter is updated to accept ExerciseConfig directly)
-                            val modeSelections = exerciseConfigs.mapValues { (_, config) -> config.mode }
-
-                            // 3. Convert template using TemplateConverter (with user's mode selections and 1RM values)
+                            // 2. Convert template using TemplateConverter (with user's exercise configs)
                             val conversionResult = templateConverter.convert(
                                 template = state.template,
-                                modeSelections = modeSelections,
-                                oneRepMaxValues = state.oneRepMaxValues
+                                exerciseConfigs = exerciseConfigs
                             )
 
-                            // 4. Save routines FIRST (CycleDay has FK to Routine)
+                            // 3. Save routines FIRST (CycleDay has FK to Routine)
                             // CRITICAL: Must await each save - workoutRepository.saveRoutine is suspend
                             // Using viewModel.saveRoutine() was fire-and-forget (launched coroutine without await)
                             conversionResult.routines.forEach { routine ->
                                 workoutRepository.saveRoutine(routine)
                             }
 
-                            // 5. Save cycle via TrainingCycleRepository (routines now guaranteed to exist)
+                            // 4. Save cycle via TrainingCycleRepository (routines now guaranteed to exist)
                             cycleRepository.saveCycle(conversionResult.cycle)
 
-                            // 6. Show warnings if any exercises weren't found
+                            // 5. Show warnings if any exercises weren't found
                             if (conversionResult.warnings.isNotEmpty()) {
                                 Logger.w { "Some exercises not found: ${conversionResult.warnings}" }
                                 showWarningDialog = conversionResult.warnings
                             }
 
-                            // 7. Navigate back or reset state
+                            // 6. Navigate back or reset state
                             creationState = CycleCreationState.Idle
                             Logger.d { "Successfully created cycle: ${state.template.name}" }
                         } catch (e: Exception) {
