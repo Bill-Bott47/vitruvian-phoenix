@@ -17,7 +17,8 @@ import com.devil.phoenixproject.ui.theme.Spacing
 
 /**
  * Segmented pill selector for workout modes.
- * Shows all 6 program modes as tappable pills.
+ * Shows 5 program modes as tappable pills (Beast Mode is a TUT sub-option).
+ * TUTBeast is internally mapped to TUT pill - beast toggle is shown in the config panel.
  */
 @Composable
 fun ModeSelector(
@@ -25,12 +26,12 @@ fun ModeSelector(
     onModeSelected: (ProgramMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Only show 5 modes in the selector - Beast Mode is a TUT sub-option
     val modes = listOf(
         ProgramMode.OldSchool,
         ProgramMode.TUT,
         ProgramMode.Pump,
         ProgramMode.EccentricOnly,
-        ProgramMode.TUTBeast,
         ProgramMode.Echo
     )
 
@@ -55,7 +56,9 @@ fun ModeSelector(
             horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall)
         ) {
             modes.forEach { mode ->
-                val isSelected = mode == selectedMode
+                // TUTBeast should highlight TUT pill
+                val isSelected = mode == selectedMode ||
+                    (mode == ProgramMode.TUT && selectedMode == ProgramMode.TUTBeast)
 
                 Box(
                     modifier = Modifier

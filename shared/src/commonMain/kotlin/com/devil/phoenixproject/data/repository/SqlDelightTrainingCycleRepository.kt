@@ -303,6 +303,12 @@ class SqlDelightTrainingCycleRepository(
         }
     }
 
+    override suspend fun clearActiveCycle() {
+        withContext(Dispatchers.IO) {
+            queries.deactivateAllCycles()
+        }
+    }
+
     override suspend fun deleteCycle(cycleId: String) {
         withContext(Dispatchers.IO) {
             db.transaction {

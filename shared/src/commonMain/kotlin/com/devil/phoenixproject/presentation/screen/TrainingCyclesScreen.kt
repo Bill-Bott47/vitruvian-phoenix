@@ -76,7 +76,11 @@ fun TrainingCyclesScreen(
     val exerciseRepository: ExerciseRepository = koinInject()
     val workoutRepository: WorkoutRepository = koinInject()
     val templateConverter: TemplateConverter = koinInject()
+    val personalRecordRepository: com.devil.phoenixproject.data.repository.PersonalRecordRepository = koinInject()
     val scope = rememberCoroutineScope()
+
+    // User preferences for weight unit
+    val weightUnit by viewModel.weightUnit.collectAsState()
 
     // Collect cycles from repository
     val cycles by cycleRepository.getAllCycles().collectAsState(initial = emptyList())
@@ -235,6 +239,11 @@ fun TrainingCyclesScreen(
                                 cycleRepository.setActiveCycle(cycle.id)
                             }
                         },
+                        onDeactivate = {
+                            scope.launch {
+                                cycleRepository.clearActiveCycle()
+                            }
+                        },
                         onEdit = {
                             navController.navigate(NavigationRoutes.CycleEditor.createRoute(cycle.id))
                         },
@@ -298,12 +307,22 @@ fun TrainingCyclesScreen(
 
             val mainLiftNames = percentageBasedExercises + otherCableExercises
 
-            // Load existing 1RM values
+            // Load existing 1RM values - prioritize PR value over stored 1RM
             val existingOneRepMaxValues = remember { mutableStateMapOf<String, Float>() }
             LaunchedEffect(mainLiftNames) {
                 mainLiftNames.forEach { exerciseName ->
                     exerciseRepository.findByName(exerciseName)?.let { exercise ->
-                        exercise.oneRepMaxKg?.let { oneRepMax ->
+                        val exerciseId = exercise.id ?: return@let
+
+                        // First try to get the PR (best weight ever achieved)
+                        val pr = personalRecordRepository.getBestWeightPR(exerciseId)
+                        val prOneRepMax = pr?.oneRepMax
+
+                        // Use PR's 1RM if available, else fall back to stored exercise 1RM
+                        val valueToUse = prOneRepMax?.takeIf { it > 0f }
+                            ?: exercise.oneRepMaxKg?.takeIf { it > 0f }
+
+                        valueToUse?.let { oneRepMax ->
                             existingOneRepMaxValues[exerciseName] = oneRepMax
                         }
                     }
@@ -313,6 +332,9 @@ fun TrainingCyclesScreen(
             OneRepMaxInputScreen(
                 mainLiftNames = mainLiftNames,
                 existingOneRepMaxValues = existingOneRepMaxValues,
+                weightUnit = weightUnit,
+                kgToDisplay = viewModel::kgToDisplay,
+                displayToKg = viewModel::displayToKg,
                 onConfirm = { oneRepMaxValues ->
                     creationState = CycleCreationState.ModeConfirmation(state.template, oneRepMaxValues)
                 },
@@ -545,10 +567,11 @@ private fun ActiveCycleCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         ),
         shape = RoundedCornerShape(20.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
     ) {
         Column(
             modifier = Modifier
@@ -577,14 +600,14 @@ private fun ActiveCycleCard(
                 }
 
                 Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                    color = MaterialTheme.colorScheme.primaryContainer,
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
                         "Day $displayedDayNumber of ${cycle.days.size}",
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
             }
@@ -596,7 +619,7 @@ private fun ActiveCycleCard(
                 displayedCycleDay?.name ?: "Day $displayedDayNumber",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                color = MaterialTheme.colorScheme.onSurface
             )
 
             if (displayedCycleDay?.isRestDay == true) {
@@ -605,14 +628,14 @@ private fun ActiveCycleCard(
                     Icon(
                         Icons.Default.SelfImprovement,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         "Rest Day - Take it easy!",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else if (routine != null) {
@@ -620,13 +643,13 @@ private fun ActiveCycleCard(
                 Text(
                     routine.name,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
                 )
                 Text(
                     routine.exercises.joinToString(", ") { it.exercise.name }.take(50) +
                         if (routine.exercises.size > 3) "..." else "",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -710,6 +733,7 @@ private fun CycleListItem(
     routines: List<Routine>,
     isActive: Boolean,
     onActivate: () -> Unit,
+    onDeactivate: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -846,29 +870,36 @@ private fun CycleListItem(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        if (!isActive) {
-                            FilledTonalButton(
-                                onClick = onActivate,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            ) {
-                                Icon(
-                                    Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text("Activate", maxLines = 1)
-                            }
+                        // Show Activate or Deactivate based on current state
+                        FilledTonalButton(
+                            onClick = if (isActive) onDeactivate else onActivate,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = if (isActive)
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                else
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = if (isActive)
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                else
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        ) {
+                            Icon(
+                                if (isActive) Icons.Default.Cancel else Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (isActive) "Deactivate" else "Activate", maxLines = 1)
                         }
                         FilledTonalButton(
                             onClick = onEdit,
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(
                                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -886,6 +917,7 @@ private fun CycleListItem(
                             onClick = onDelete,
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(
                                 containerColor = MaterialTheme.colorScheme.errorContainer,
                                 contentColor = MaterialTheme.colorScheme.onErrorContainer

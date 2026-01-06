@@ -148,6 +148,10 @@ class MainViewModel constructor(
     )
     val workoutParameters: StateFlow<WorkoutParameters> = _workoutParameters.asStateFlow()
 
+    // Issue #108: Track if user manually adjusted weight during rest period
+    // When true, preserve user's weight instead of reloading from exercise preset
+    private var _userAdjustedWeightDuringRest = false
+
     private val _repCount = MutableStateFlow(RepCount())
     val repCount: StateFlow<RepCount> = _repCount.asStateFlow()
 
@@ -1537,6 +1541,17 @@ class MainViewModel constructor(
         viewModelScope.launch { workoutRepository.deleteRoutine(routineId) }
     }
 
+    /**
+     * Batch delete multiple routines (for multi-select feature)
+     */
+    fun deleteRoutines(routineIds: Set<String>) {
+        viewModelScope.launch {
+            routineIds.forEach { id ->
+                workoutRepository.deleteRoutine(id)
+            }
+        }
+    }
+
     fun loadRoutine(routine: Routine) {
         if (routine.exercises.isEmpty()) {
             Logger.w { "Cannot load routine with no exercises" }
@@ -2034,6 +2049,12 @@ class MainViewModel constructor(
         val clampedWeight = newWeightKg.coerceIn(0f, 110f) // Max 110kg per cable (220kg total)
 
         Logger.d("MainViewModel: Adjusting weight to $clampedWeight kg (sendToMachine=$sendToMachine)")
+
+        // Issue #108: Track if user adjusts weight during rest period
+        if (_workoutState.value is WorkoutState.Resting) {
+            _userAdjustedWeightDuringRest = true
+            Logger.d("MainViewModel: User adjusted weight during rest - will preserve on next set")
+        }
 
         // Update workout parameters
         _workoutParameters.update { params ->
@@ -3143,8 +3164,15 @@ class MainViewModel constructor(
         if (_currentSetIndex.value < currentExercise.setReps.size - 1) {
             _currentSetIndex.value++
             val targetReps = currentExercise.setReps[_currentSetIndex.value]
-            val setWeight = currentExercise.setWeightsPerCableKg.getOrNull(_currentSetIndex.value)
-                ?: currentExercise.weightPerCableKg
+
+            // Issue #108: Preserve user-adjusted weight, otherwise use preset
+            val setWeight = if (_userAdjustedWeightDuringRest) {
+                _workoutParameters.value.weightPerCableKg
+            } else {
+                currentExercise.setWeightsPerCableKg.getOrNull(_currentSetIndex.value)
+                    ?: currentExercise.weightPerCableKg
+            }
+            _userAdjustedWeightDuringRest = false // Reset flag after use
 
             _workoutParameters.value = _workoutParameters.value.copy(
                 reps = targetReps ?: 0,
@@ -3211,6 +3239,7 @@ class MainViewModel constructor(
                     } else {
                         // Found a valid exercise with sets remaining
                         _currentExerciseIndex.value = candidateIndex
+                        _userAdjustedWeightDuringRest = false // Issue #108: Reset flag when changing exercises
                         val setReps = candidateExercise.setReps.getOrNull(_currentSetIndex.value)
                         val setWeight = candidateExercise.setWeightsPerCableKg.getOrNull(_currentSetIndex.value)
                             ?: candidateExercise.weightPerCableKg
@@ -3235,6 +3264,7 @@ class MainViewModel constructor(
                 } else {
                     // Normal case - next exercise has sets at this index
                     _currentExerciseIndex.value = nextSupersetIndex
+                    _userAdjustedWeightDuringRest = false // Issue #108: Reset flag when changing exercises
                     val nextSetWeight = nextExercise.setWeightsPerCableKg.getOrNull(_currentSetIndex.value)
                         ?: nextExercise.weightPerCableKg
 
@@ -3280,6 +3310,7 @@ class MainViewModel constructor(
 
                 if (targetExercise != null && targetIndex >= 0) {
                     _currentExerciseIndex.value = targetIndex
+                    _userAdjustedWeightDuringRest = false // Issue #108: Reset flag when changing exercises
                     val nextSetReps = targetExercise.setReps.getOrNull(nextSetIndex)
                     val nextSetWeight = targetExercise.setWeightsPerCableKg.getOrNull(nextSetIndex)
                         ?: targetExercise.weightPerCableKg
@@ -3311,8 +3342,15 @@ class MainViewModel constructor(
             // More sets in current exercise (non-superset)
             _currentSetIndex.value++
             val targetReps = currentExercise.setReps[_currentSetIndex.value]
-            val setWeight = currentExercise.setWeightsPerCableKg.getOrNull(_currentSetIndex.value)
-                ?: currentExercise.weightPerCableKg
+
+            // Issue #108: Preserve user-adjusted weight, otherwise use preset
+            val setWeight = if (_userAdjustedWeightDuringRest) {
+                _workoutParameters.value.weightPerCableKg
+            } else {
+                currentExercise.setWeightsPerCableKg.getOrNull(_currentSetIndex.value)
+                    ?: currentExercise.weightPerCableKg
+            }
+            _userAdjustedWeightDuringRest = false // Reset flag after use
 
             _workoutParameters.value = _workoutParameters.value.copy(
                 reps = targetReps ?: 0,
@@ -3331,6 +3369,7 @@ class MainViewModel constructor(
             if (nextExerciseIndex != null && nextExerciseIndex < routine.exercises.size) {
                 _currentExerciseIndex.value = nextExerciseIndex
                 _currentSetIndex.value = 0
+                _userAdjustedWeightDuringRest = false // Issue #108: Reset flag when changing exercises
 
                 val nextExercise = routine.exercises[nextExerciseIndex]
                 val nextSetReps = nextExercise.setReps.getOrNull(0)

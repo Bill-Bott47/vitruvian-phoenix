@@ -85,21 +85,25 @@ fun ExerciseConfigModal(
                         modifier = Modifier.padding(Spacing.medium),
                         verticalArrangement = Arrangement.spacedBy(Spacing.medium)
                     ) {
-                        when (mode) {
+                        // For TUT/TUTBeast, we show the same panel with Beast Mode toggle
+                        val effectiveMode = if (mode == ProgramMode.TUTBeast) ProgramMode.TUT else mode
+
+                        when (effectiveMode) {
                             ProgramMode.OldSchool -> OldSchoolConfigPanel(
                                 weight = config.weightPerCableKg,
-                                onWeightChange = { config = config.copy(weightPerCableKg = it) },
-                                autoProgression = config.autoProgression,
-                                onAutoProgressionChange = { config = config.copy(autoProgression = it) }
+                                onWeightChange = { config = config.copy(weightPerCableKg = it) }
                             )
                             ProgramMode.TUT -> TutConfigPanel(
                                 weight = config.weightPerCableKg,
-                                onWeightChange = { config = config.copy(weightPerCableKg = it) }
+                                onWeightChange = { config = config.copy(weightPerCableKg = it) },
+                                isBeastMode = config.mode == ProgramMode.TUTBeast,
+                                onBeastModeChange = { enabled ->
+                                    config = config.copy(
+                                        mode = if (enabled) ProgramMode.TUTBeast else ProgramMode.TUT
+                                    )
+                                }
                             )
-                            ProgramMode.TUTBeast -> TutBeastConfigPanel(
-                                weight = config.weightPerCableKg,
-                                onWeightChange = { config = config.copy(weightPerCableKg = it) }
-                            )
+                            ProgramMode.TUTBeast -> { /* Handled by TUT case above */ }
                             ProgramMode.Pump -> PumpConfigPanel(
                                 weight = config.weightPerCableKg,
                                 onWeightChange = { config = config.copy(weightPerCableKg = it) }
@@ -205,70 +209,66 @@ private fun MetaChip(label: String, value: String) {
 @Composable
 private fun OldSchoolConfigPanel(
     weight: Float,
-    onWeightChange: (Float) -> Unit,
-    autoProgression: Boolean,
-    onAutoProgressionChange: (Boolean) -> Unit
+    onWeightChange: (Float) -> Unit
 ) {
     WeightStepper(
         weight = weight,
         onWeightChange = onWeightChange,
         label = "Starting Weight"
     )
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(Spacing.medium),
-        color = MaterialTheme.colorScheme.surfaceContainerLow
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(Spacing.medium),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Auto Progression",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "+2.5% after each completed cycle",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Switch(
-                checked = autoProgression,
-                onCheckedChange = onAutoProgressionChange
-            )
-        }
-    }
+    ModeInfoCard(
+        title = "Old School",
+        description = "Classic resistance training with consistent weight throughout your sets."
+    )
 }
 
 @Composable
 private fun TutConfigPanel(
     weight: Float,
-    onWeightChange: (Float) -> Unit
+    onWeightChange: (Float) -> Unit,
+    isBeastMode: Boolean,
+    onBeastModeChange: (Boolean) -> Unit
 ) {
     WeightStepper(weight = weight, onWeightChange = onWeightChange, label = "Starting Weight")
-    ModeInfoCard(
-        title = "Time Under Tension",
-        description = "Maintains constant resistance throughout the movement for maximum muscle engagement."
-    )
-}
 
-@Composable
-private fun TutBeastConfigPanel(
-    weight: Float,
-    onWeightChange: (Float) -> Unit
-) {
-    WeightStepper(weight = weight, onWeightChange = onWeightChange, label = "Starting Weight")
+    // Beast Mode Toggle
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            Text(
+                text = "BEAST MODE",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                letterSpacing = 1.sp
+            )
+            Text(
+                text = if (isBeastMode) "Extended difficulty" else "Standard TUT",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+        }
+        Switch(
+            checked = isBeastMode,
+            onCheckedChange = onBeastModeChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MaterialTheme.colorScheme.primary,
+                checkedTrackColor = MaterialTheme.colorScheme.primaryContainer,
+                uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+            )
+        )
+    }
+
     ModeInfoCard(
-        title = "TUT Beast Mode",
-        description = "Extended time under tension with increased difficulty. For advanced users."
+        title = if (isBeastMode) "TUT Beast Mode" else "Time Under Tension",
+        description = if (isBeastMode) {
+            "Extended time under tension with increased difficulty. For advanced users."
+        } else {
+            "Maintains constant resistance throughout the movement for maximum muscle engagement."
+        }
     )
 }
 
@@ -323,7 +323,7 @@ private fun EchoConfigPanel(
                 .padding(Spacing.extraSmall),
             horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall)
         ) {
-            listOf(EchoLevel.HARD, EchoLevel.HARDER, EchoLevel.HARDEST).forEach { level ->
+            listOf(EchoLevel.HARD, EchoLevel.HARDER, EchoLevel.HARDEST, EchoLevel.EPIC).forEach { level ->
                 val isSelected = level == echoLevel
 
                 Surface(
