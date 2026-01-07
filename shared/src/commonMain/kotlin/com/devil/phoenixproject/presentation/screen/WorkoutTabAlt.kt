@@ -206,6 +206,20 @@ fun WorkoutTabAlt(
                             },
                             onUpdateWeight = { newWeight ->
                                 onUpdateParameters(workoutParameters.copy(weightPerCableKg = newWeight))
+                            },
+                            // Echo mode specific
+                            programMode = workoutParameters.programMode,
+                            echoLevel = workoutParameters.echoLevel,
+                            eccentricLoadPercent = workoutParameters.eccentricLoad.percentage,
+                            onUpdateEchoLevel = { newLevel ->
+                                onUpdateParameters(workoutParameters.copy(echoLevel = newLevel))
+                            },
+                            onUpdateEccentricLoad = { newPercent ->
+                                // Snap to nearest EccentricLoad enum value (0-150 range)
+                                val newLoad = com.devil.phoenixproject.domain.model.EccentricLoad.entries
+                                    .minByOrNull { kotlin.math.abs(it.percentage - newPercent) }
+                                    ?: com.devil.phoenixproject.domain.model.EccentricLoad.LOAD_100
+                                onUpdateParameters(workoutParameters.copy(eccentricLoad = newLoad))
                             }
                         )
                     }
