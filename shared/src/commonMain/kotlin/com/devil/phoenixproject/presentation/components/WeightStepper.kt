@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devil.phoenixproject.ui.theme.Spacing
+import com.devil.phoenixproject.util.format
 
 /**
  * Weight input with +/- stepper buttons.
@@ -76,7 +77,7 @@ fun WeightStepper(
                     text = if (weight == weight.toLong().toFloat()) {
                         weight.toLong().toString()
                     } else {
-                        "%.1f".format(weight)
+                        weight.format(1)
                     },
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,

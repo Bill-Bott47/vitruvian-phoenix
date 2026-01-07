@@ -250,6 +250,55 @@ class WorkoutFlowE2ETest {
     }
 
     @Test
+    fun `start workout sends commands and sets active state`() = runTest {
+        val baselineMetric = com.devil.phoenixproject.domain.model.WorkoutMetric(
+            positionA = 100f,
+            positionB = 100f,
+            loadA = 10f,
+            loadB = 10f
+        )
+
+        val localRobot = WorkoutRobot(viewModel, fakeBleRepository)
+        localRobot.connectToDevice()
+        advanceUntilIdle()
+        localRobot.configureWorkout(weight = 20f, reps = 2, warmupReps = 0)
+
+        fakeBleRepository.emitMetric(baselineMetric)
+        viewModel.startWorkout(skipCountdown = true)
+        advanceUntilIdle()
+
+        localRobot.verifyWorkoutActive()
+        kotlin.test.assertEquals(3, fakeBleRepository.commandsReceived.size)
+    }
+
+    @Test
+    fun `rep notifications update counts and stop workout`() = runTest {
+        val metric = com.devil.phoenixproject.domain.model.WorkoutMetric(
+            positionA = 120f,
+            positionB = 120f,
+            loadA = 10f,
+            loadB = 10f
+        )
+
+        val localRobot = WorkoutRobot(viewModel, fakeBleRepository)
+        localRobot.connectToDevice()
+        advanceUntilIdle()
+        localRobot.configureWorkout(weight = 20f, reps = 2, warmupReps = 0)
+
+        fakeBleRepository.emitMetric(metric)
+        viewModel.startWorkout(skipCountdown = true)
+        advanceUntilIdle()
+
+        localRobot.simulateRepNotification(1, metric)
+        localRobot.simulateRepNotification(2, metric)
+        advanceUntilIdle()
+
+        localRobot.verifyWorkoutSummary()
+        localRobot.verifyRepCount(expectedWorking = 2, expectedWarmup = 0)
+        kotlin.test.assertEquals(1, fakeWorkoutRepository.getRecentSessionsSync(5).size)
+    }
+
+    @Test
     fun `switch between workout modes`() = runTest {
         workoutRobot(viewModel, fakeBleRepository) {
             connectToDevice()

@@ -6,18 +6,19 @@ import com.devil.phoenixproject.domain.model.CableConfiguration
 import com.devil.phoenixproject.domain.model.EccentricLoad
 import com.devil.phoenixproject.domain.model.EchoLevel
 import com.devil.phoenixproject.domain.model.Exercise
-import com.devil.phoenixproject.domain.model.PersonalRecord
 import com.devil.phoenixproject.domain.model.PRType
+import com.devil.phoenixproject.domain.model.PersonalRecord
 import com.devil.phoenixproject.domain.model.ProgramMode
 import com.devil.phoenixproject.domain.model.WorkoutMetric
 import com.devil.phoenixproject.domain.model.WorkoutParameters
 import com.devil.phoenixproject.domain.model.WorkoutSession
-import com.devil.phoenixproject.domain.model.WorkoutType
+import com.devil.phoenixproject.domain.model.currentTimeMillis
 
 /**
  * Pre-built test fixtures for use in tests.
  * Provides consistent, reusable test data.
  */
+@Suppress("unused") // Test fixtures are available for test scenarios
 object TestFixtures {
 
     // ========== Exercises ==========
@@ -83,7 +84,7 @@ object TestFixtures {
     // ========== Workout Parameters ==========
 
     val oldSchoolParams = WorkoutParameters(
-        workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+        programMode = ProgramMode.OldSchool,
         reps = 10,
         weightPerCableKg = 25f,
         progressionRegressionKg = 0f,
@@ -91,14 +92,16 @@ object TestFixtures {
     )
 
     val echoParams = WorkoutParameters(
-        workoutType = WorkoutType.Echo(EchoLevel.HARDER, EccentricLoad.LOAD_120),
+        programMode = ProgramMode.Echo,
         reps = 8,
         weightPerCableKg = 0f, // Echo mode doesn't use weight setting
-        selectedExerciseId = squat.id
+        selectedExerciseId = squat.id,
+        echoLevel = EchoLevel.HARDER,
+        eccentricLoad = EccentricLoad.LOAD_120
     )
 
     val justLiftParams = WorkoutParameters(
-        workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+        programMode = ProgramMode.OldSchool,
         reps = 0, // AMRAP
         weightPerCableKg = 30f,
         isJustLift = true,
@@ -118,7 +121,7 @@ object TestFixtures {
         workingReps: Int = 10,
         warmupReps: Int = 0,
         mode: String = "OldSchool",
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = currentTimeMillis()
     ) = WorkoutSession(
         id = id,
         timestamp = timestamp,
@@ -142,7 +145,7 @@ object TestFixtures {
         weightPerCableKg: Float = 50f,
         reps: Int = 5,
         prType: PRType = PRType.MAX_WEIGHT,
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = currentTimeMillis()
     ) = PersonalRecord(
         id = 0,
         exerciseId = exerciseId,
@@ -167,7 +170,7 @@ object TestFixtures {
         positionB: Float = 500f,
         velocityA: Double = 0.0,
         velocityB: Double = 0.0,
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = currentTimeMillis()
     ) = WorkoutMetric(
         timestamp = timestamp,
         loadA = loadA,
@@ -185,7 +188,7 @@ object TestFixtures {
     fun createRepMetrics(
         repNumber: Int = 1,
         loadKg: Float = 25f,
-        baseTimestamp: Long = System.currentTimeMillis()
+        baseTimestamp: Long = currentTimeMillis()
     ): List<WorkoutMetric> {
         val metrics = mutableListOf<WorkoutMetric>()
         val positions = listOf(0f, 200f, 400f, 600f, 800f, 600f, 400f, 200f, 0f)
@@ -214,7 +217,7 @@ object TestFixtures {
         completeCounter: Int = 1,
         repsRomCount: Int = 0,
         repsSetCount: Int = 1,
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = currentTimeMillis()
     ) = RepNotification(
         topCounter = topCounter,
         completeCounter = completeCounter,

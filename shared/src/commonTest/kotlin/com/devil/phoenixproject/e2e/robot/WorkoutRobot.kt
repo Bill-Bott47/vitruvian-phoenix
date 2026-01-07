@@ -5,9 +5,9 @@ import com.devil.phoenixproject.domain.model.ProgramMode
 import com.devil.phoenixproject.domain.model.WorkoutMetric
 import com.devil.phoenixproject.domain.model.WorkoutParameters
 import com.devil.phoenixproject.domain.model.WorkoutState
-import com.devil.phoenixproject.domain.model.WorkoutType
 import com.devil.phoenixproject.presentation.viewmodel.MainViewModel
 import com.devil.phoenixproject.testutil.FakeBleRepository
+import com.devil.phoenixproject.data.repository.RepNotification
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -28,6 +28,7 @@ import kotlin.test.assertTrue
  * }
  * ```
  */
+@Suppress("unused") // Robot methods are available for test scenarios
 class WorkoutRobot(
     private val viewModel: MainViewModel,
     private val bleRepository: FakeBleRepository
@@ -60,7 +61,7 @@ class WorkoutRobot(
         isJustLift: Boolean = false
     ): WorkoutRobot {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(mode),
+            programMode = mode,
             weightPerCableKg = weight,
             reps = reps,
             warmupReps = warmupReps,
@@ -84,13 +85,23 @@ class WorkoutRobot(
 
     fun setMode(mode: ProgramMode): WorkoutRobot {
         val current = viewModel.workoutParameters.value
-        viewModel.updateWorkoutParameters(current.copy(workoutType = WorkoutType.Program(mode)))
+        viewModel.updateWorkoutParameters(current.copy(programMode = mode))
         return this
     }
 
     fun enableJustLift(): WorkoutRobot {
         val current = viewModel.workoutParameters.value
         viewModel.updateWorkoutParameters(current.copy(isJustLift = true))
+        return this
+    }
+
+    fun startWorkout(skipCountdown: Boolean = true, isJustLiftMode: Boolean = false): WorkoutRobot {
+        viewModel.startWorkout(skipCountdown = skipCountdown, isJustLiftMode = isJustLiftMode)
+        return this
+    }
+
+    fun stopWorkout(): WorkoutRobot {
+        viewModel.stopWorkout()
         return this
     }
 
@@ -126,6 +137,24 @@ class WorkoutRobot(
         return this
     }
 
+    suspend fun simulateRepNotification(repIndex: Int, metric: WorkoutMetric): WorkoutRobot {
+        bleRepository.emitMetric(metric)
+        bleRepository.emitRepNotification(
+            RepNotification(
+                topCounter = repIndex,
+                completeCounter = repIndex,
+                repsRomCount = repIndex,
+                repsSetCount = repIndex,
+                rangeTop = 800f,
+                rangeBottom = 0f,
+                rawData = ByteArray(24),
+                timestamp = repIndex.toLong()
+            )
+        )
+        bleRepository.emitMetric(metric)
+        return this
+    }
+
     // ========== Assertions ==========
 
     fun verifyConnected(): WorkoutRobot {
@@ -155,6 +184,16 @@ class WorkoutRobot(
         return this
     }
 
+    fun verifyWorkoutActive(): WorkoutRobot {
+        assertIs<WorkoutState.Active>(viewModel.workoutState.value)
+        return this
+    }
+
+    fun verifyWorkoutSummary(): WorkoutRobot {
+        assertIs<WorkoutState.SetSummary>(viewModel.workoutState.value)
+        return this
+    }
+
     fun verifyWeight(expectedWeight: Float): WorkoutRobot {
         assertEquals(expectedWeight, viewModel.workoutParameters.value.weightPerCableKg)
         return this
@@ -166,9 +205,7 @@ class WorkoutRobot(
     }
 
     fun verifyMode(expectedMode: ProgramMode): WorkoutRobot {
-        val workoutType = viewModel.workoutParameters.value.workoutType
-        assertIs<WorkoutType.Program>(workoutType)
-        assertEquals(expectedMode, workoutType.mode)
+        assertEquals(expectedMode, viewModel.workoutParameters.value.programMode)
         return this
     }
 
@@ -185,6 +222,13 @@ class WorkoutRobot(
     fun verifyTotalReps(expectedTotal: Int): WorkoutRobot {
         val params = viewModel.workoutParameters.value
         assertEquals(expectedTotal, params.reps + params.warmupReps)
+        return this
+    }
+
+    fun verifyRepCount(expectedWorking: Int, expectedWarmup: Int = 0): WorkoutRobot {
+        val count = viewModel.repCount.value
+        assertEquals(expectedWorking, count.workingReps)
+        assertEquals(expectedWarmup, count.warmupReps)
         return this
     }
 }

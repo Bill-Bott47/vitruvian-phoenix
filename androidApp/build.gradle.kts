@@ -133,14 +133,17 @@ dependencies {
     testImplementation(libs.koin.test.junit4)
 
     // Testing - Instrumented/E2E Tests
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso)
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.espresso)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.compose.ui:ui-test")
     androidTestImplementation(libs.mockk.android)
     androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.truth)
     androidTestImplementation(libs.koin.test)
     androidTestImplementation(libs.koin.test.junit4)
+    androidTestImplementation(libs.multiplatform.settings.test)
+    androidTestImplementation(libs.multiplatform.settings)
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

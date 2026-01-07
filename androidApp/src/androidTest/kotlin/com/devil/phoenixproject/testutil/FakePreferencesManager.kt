@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * Fake preferences manager for testing.
  * Stores preferences in memory without any persistence.
  */
+@Suppress("unused") // Test utility methods are available for future tests
 class FakePreferencesManager : PreferencesManager {
 
     private val _preferencesFlow = MutableStateFlow(UserPreferences())

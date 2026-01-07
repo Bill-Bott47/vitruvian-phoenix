@@ -3,6 +3,7 @@ package com.devil.phoenixproject.util
 import com.devil.phoenixproject.domain.model.PersonalRecord
 import com.devil.phoenixproject.domain.model.WeightUnit
 import com.devil.phoenixproject.domain.model.WorkoutSession
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.*
 import platform.UIKit.UIActivityViewController
@@ -14,7 +15,7 @@ import platform.darwin.dispatch_get_main_queue
  * iOS implementation of CsvExporter.
  * Uses Foundation APIs for file I/O and UIActivityViewController for sharing.
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosCsvExporter : CsvExporter {
 
     private val fileManager = NSFileManager.defaultManager
@@ -65,7 +66,14 @@ class IosCsvExporter : CsvExporter {
                     val exerciseName = exerciseNames[session.exerciseId] ?: session.exerciseId ?: "Unknown"
                     val date = KmpUtils.formatTimestamp(session.timestamp, "yyyy-MM-dd")
                     val time = KmpUtils.formatTimestamp(session.timestamp, "HH:mm")
-                    val formattedWeight = formatWeight(session.weightPerCableKg, weightUnit)
+                    // For Echo mode, use peak weight (matches official app behavior); otherwise use configured weight
+                    val isEchoMode = session.mode.contains("Echo", ignoreCase = true)
+                    val effectiveWeight = if (isEchoMode) {
+                        session.peakWeightKg ?: session.workingAvgWeightKg ?: session.weightPerCableKg
+                    } else {
+                        session.weightPerCableKg
+                    }
+                    val formattedWeight = formatWeight(effectiveWeight, weightUnit)
                     val durationSeconds = session.duration / 1000
                     appendLine("$date,$time,\"$exerciseName\",${session.mode},$formattedWeight,${session.reps},$durationSeconds")
                 }
@@ -128,8 +136,7 @@ class IosCsvExporter : CsvExporter {
         // Dispatch to main thread - UIKit requires all UI operations on main thread
         dispatch_async(dispatch_get_main_queue()) {
             // Get the key window's root view controller
-            @Suppress("UNCHECKED_CAST")
-            val scenes = UIApplication.sharedApplication.connectedScenes as Set<*>
+            val scenes = UIApplication.sharedApplication.connectedScenes
             val windowScene = scenes.firstOrNull {
                 it is platform.UIKit.UIWindowScene
             } as? platform.UIKit.UIWindowScene

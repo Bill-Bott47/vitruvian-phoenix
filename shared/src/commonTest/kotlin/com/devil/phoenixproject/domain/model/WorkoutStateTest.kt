@@ -4,7 +4,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class WorkoutStateTest {
@@ -132,72 +131,6 @@ class WorkoutStateTest {
         assertEquals("A1", state.supersetLabel)
     }
 
-    // ========== WorkoutMode Tests ==========
-
-    @Test
-    fun `WorkoutMode toWorkoutType converts OldSchool correctly`() {
-        val mode = WorkoutMode.OldSchool
-        val type = mode.toWorkoutType()
-
-        assertIs<WorkoutType.Program>(type)
-        assertEquals(ProgramMode.OldSchool, type.mode)
-    }
-
-    @Test
-    fun `WorkoutMode toWorkoutType converts Pump correctly`() {
-        val mode = WorkoutMode.Pump
-        val type = mode.toWorkoutType()
-
-        assertIs<WorkoutType.Program>(type)
-        assertEquals(ProgramMode.Pump, type.mode)
-    }
-
-    @Test
-    fun `WorkoutMode toWorkoutType converts TUT correctly`() {
-        val mode = WorkoutMode.TUT
-        val type = mode.toWorkoutType()
-
-        assertIs<WorkoutType.Program>(type)
-        assertEquals(ProgramMode.TUT, type.mode)
-    }
-
-    @Test
-    fun `WorkoutMode toWorkoutType converts Echo with level`() {
-        val mode = WorkoutMode.Echo(EchoLevel.EPIC)
-        val type = mode.toWorkoutType(EccentricLoad.LOAD_150)
-
-        assertIs<WorkoutType.Echo>(type)
-        assertEquals(EchoLevel.EPIC, type.level)
-        assertEquals(EccentricLoad.LOAD_150, type.eccentricLoad)
-    }
-
-    @Test
-    fun `WorkoutType toWorkoutMode converts Program modes correctly`() {
-        val type = WorkoutType.Program(ProgramMode.TUTBeast)
-        val mode = type.toWorkoutMode()
-
-        assertIs<WorkoutMode.TUTBeast>(mode)
-    }
-
-    @Test
-    fun `WorkoutType toWorkoutMode converts Echo correctly`() {
-        val type = WorkoutType.Echo(EchoLevel.HARDEST, EccentricLoad.LOAD_120)
-        val mode = type.toWorkoutMode()
-
-        assertIs<WorkoutMode.Echo>(mode)
-        assertEquals(EchoLevel.HARDEST, mode.level)
-    }
-
-    @Test
-    fun `WorkoutType displayName returns correct names`() {
-        assertEquals("Old School", WorkoutType.Program(ProgramMode.OldSchool).displayName)
-        assertEquals("Pump", WorkoutType.Program(ProgramMode.Pump).displayName)
-        assertEquals("TUT", WorkoutType.Program(ProgramMode.TUT).displayName)
-        assertEquals("TUT Beast", WorkoutType.Program(ProgramMode.TUTBeast).displayName)
-        assertEquals("Eccentric Only", WorkoutType.Program(ProgramMode.EccentricOnly).displayName)
-        assertEquals("Echo", WorkoutType.Echo(EchoLevel.HARD, EccentricLoad.LOAD_100).displayName)
-    }
-
     // ========== ProgramMode Tests ==========
 
     @Test
@@ -207,6 +140,33 @@ class WorkoutStateTest {
         assertEquals(3, ProgramMode.TUT.modeValue)
         assertEquals(4, ProgramMode.TUTBeast.modeValue)
         assertEquals(6, ProgramMode.EccentricOnly.modeValue)
+        assertEquals(10, ProgramMode.Echo.modeValue)
+    }
+
+    @Test
+    fun `ProgramMode has correct display names`() {
+        assertEquals("Old School", ProgramMode.OldSchool.displayName)
+        assertEquals("Pump", ProgramMode.Pump.displayName)
+        assertEquals("TUT", ProgramMode.TUT.displayName)
+        assertEquals("TUT Beast", ProgramMode.TUTBeast.displayName)
+        assertEquals("Eccentric Only", ProgramMode.EccentricOnly.displayName)
+        assertEquals("Echo", ProgramMode.Echo.displayName)
+    }
+
+    @Test
+    fun `ProgramMode fromValue returns correct modes`() {
+        assertEquals(ProgramMode.OldSchool, ProgramMode.fromValue(0))
+        assertEquals(ProgramMode.Pump, ProgramMode.fromValue(2))
+        assertEquals(ProgramMode.TUT, ProgramMode.fromValue(3))
+        assertEquals(ProgramMode.TUTBeast, ProgramMode.fromValue(4))
+        assertEquals(ProgramMode.EccentricOnly, ProgramMode.fromValue(6))
+        assertEquals(ProgramMode.Echo, ProgramMode.fromValue(10))
+    }
+
+    @Test
+    fun `ProgramMode fromValue returns OldSchool for unknown values`() {
+        assertEquals(ProgramMode.OldSchool, ProgramMode.fromValue(999))
+        assertEquals(ProgramMode.OldSchool, ProgramMode.fromValue(-1))
     }
 
     // ========== EchoLevel Tests ==========
