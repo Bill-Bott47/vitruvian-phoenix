@@ -3,7 +3,7 @@ package com.devil.phoenixproject.testutil
 import com.devil.phoenixproject.data.preferences.JustLiftDefaults
 import com.devil.phoenixproject.data.preferences.PreferencesManager
 import com.devil.phoenixproject.data.preferences.SingleExerciseDefaults
-import com.devil.phoenixproject.data.preferences.UserPreferences
+import com.devil.phoenixproject.domain.model.UserPreferences
 import com.devil.phoenixproject.domain.model.WeightUnit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -89,5 +89,13 @@ class FakePreferencesManager : PreferencesManager {
 
     override suspend fun clearJustLiftDefaults() {
         justLiftDefaults = JustLiftDefaults()
+    }
+
+    override suspend fun setSummaryCountdownSeconds(seconds: Int) {
+        _preferencesFlow.value = _preferencesFlow.value.copy(summaryCountdownSeconds = seconds)
+    }
+
+    override suspend fun setAutoStartCountdownSeconds(seconds: Int) {
+        _preferencesFlow.value = _preferencesFlow.value.copy(autoStartCountdownSeconds = seconds)
     }
 }

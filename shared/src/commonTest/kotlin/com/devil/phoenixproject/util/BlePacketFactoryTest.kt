@@ -3,7 +3,6 @@ package com.devil.phoenixproject.util
 import com.devil.phoenixproject.domain.model.EchoLevel
 import com.devil.phoenixproject.domain.model.ProgramMode
 import com.devil.phoenixproject.domain.model.WorkoutParameters
-import com.devil.phoenixproject.domain.model.WorkoutType
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -81,7 +80,7 @@ class BlePacketFactoryTest {
     @Test
     fun `createWorkoutCommand returns 25-byte packet with mode and weight`() {
         val packet = BlePacketFactory.createWorkoutCommand(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             weightPerCableKg = 20f,
             targetReps = 10
         )
@@ -95,7 +94,7 @@ class BlePacketFactoryTest {
     @Test
     fun `createWorkoutCommand encodes weight in little-endian format`() {
         val packet = BlePacketFactory.createWorkoutCommand(
-            workoutType = WorkoutType.Program(ProgramMode.Pump),
+            programMode = ProgramMode.Pump,
             weightPerCableKg = 25.5f, // 2550 when scaled by 100
             targetReps = 12
         )
@@ -111,7 +110,7 @@ class BlePacketFactoryTest {
     @Test
     fun `createProgramParams returns 96-byte frame`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 10,
             weightPerCableKg = 20f
         )
@@ -124,7 +123,7 @@ class BlePacketFactoryTest {
     @Test
     fun `createProgramParams has command 0x04 at header`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 10,
             weightPerCableKg = 20f
         )
@@ -140,7 +139,7 @@ class BlePacketFactoryTest {
     @Test
     fun `createProgramParams encodes reps at offset 0x04`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 12,
             warmupReps = 3,
             weightPerCableKg = 20f
@@ -155,7 +154,7 @@ class BlePacketFactoryTest {
     @Test
     fun `createProgramParams uses 0xFF for Just Lift mode reps`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 10,
             weightPerCableKg = 20f,
             isJustLift = true
@@ -169,7 +168,7 @@ class BlePacketFactoryTest {
     @Test
     fun `createProgramParams uses 0xFF for AMRAP mode reps`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 10,
             weightPerCableKg = 20f,
             isAMRAP = true
@@ -183,7 +182,7 @@ class BlePacketFactoryTest {
     @Test
     fun `createProgramParams includes mode profile at offset 0x30`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.Pump),
+            programMode = ProgramMode.Pump,
             reps = 10,
             weightPerCableKg = 20f
         )
@@ -346,7 +345,7 @@ class BlePacketFactoryTest {
     @Test
     fun `program params encodes floats in little-endian format`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 10,
             weightPerCableKg = 20f,
             progressionRegressionKg = 2.5f
@@ -376,7 +375,7 @@ class BlePacketFactoryTest {
 
         for (mode in modes) {
             val params = WorkoutParameters(
-                workoutType = WorkoutType.Program(mode),
+                programMode = mode,
                 reps = 10,
                 weightPerCableKg = 20f
             )

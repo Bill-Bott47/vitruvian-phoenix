@@ -697,6 +697,9 @@ INSERT OR IGNORE INTO EarnedBadge (badgeId, earnedAt) VALUES (?, ?);
 markBadgeCelebrated:
 UPDATE EarnedBadge SET celebratedAt = ? WHERE badgeId = ?;
 
+markBadgesCelebrated:
+UPDATE EarnedBadge SET celebratedAt = ? WHERE badgeId IN ?;
+
 -- Streak History Queries
 selectAllStreakHistory:
 SELECT * FROM StreakHistory ORDER BY length DESC;
@@ -902,6 +905,9 @@ UPDATE TrainingCycle SET name = ?, description = ?, is_active = ? WHERE id = ?;
 
 setActiveTrainingCycle:
 UPDATE TrainingCycle SET is_active = CASE WHEN id = ? THEN 1 ELSE 0 END;
+
+deactivateAllCycles:
+UPDATE TrainingCycle SET is_active = 0;
 
 deleteTrainingCycle:
 DELETE FROM TrainingCycle WHERE id = ?;

@@ -81,7 +81,7 @@ fun JustLiftScreen(
     val isAutoConnecting by viewModel.isAutoConnecting.collectAsState()
     val connectionError by viewModel.connectionError.collectAsState()
 
-    var selectedMode by remember { mutableStateOf(workoutParameters.workoutType.toWorkoutMode()) }
+    var selectedMode by remember { mutableStateOf(workoutParameters.programMode.toWorkoutMode(workoutParameters.echoLevel)) }
     // Initialize to match the picker's default: 1 lb = 0.453592 kg
     var weightPerCable by remember { mutableStateOf(0.453592f) }
     var weightChangePerRep by remember { mutableStateOf(0) } // Progression/Regression value
@@ -112,8 +112,8 @@ fun JustLiftScreen(
                 }
 
                 // Set mode from saved defaults
-                val savedWorkoutType = defaults.toWorkoutType()
-                selectedMode = savedWorkoutType.toWorkoutMode()
+                val savedProgramMode = defaults.toProgramMode()
+                selectedMode = savedProgramMode.toWorkoutMode(defaults.getEchoLevel())
 
                 // Restore eccentric load and echo level for Echo mode
                 eccentricLoad = defaults.getEccentricLoad()
@@ -125,11 +125,10 @@ fun JustLiftScreen(
         }
     }
 
-    LaunchedEffect(workoutParameters.workoutType) {
-        val workoutType = workoutParameters.workoutType
-        if (workoutType is WorkoutType.Echo) {
-            eccentricLoad = workoutType.eccentricLoad
-            echoLevel = workoutType.level
+    LaunchedEffect(workoutParameters.programMode) {
+        if (workoutParameters.isEchoMode) {
+            eccentricLoad = workoutParameters.eccentricLoad
+            echoLevel = workoutParameters.echoLevel
         }
     }
 
@@ -169,13 +168,17 @@ fun JustLiftScreen(
             weightChangePerRep.toFloat()
         }
 
+        val newEchoLevel = if (selectedMode is WorkoutMode.Echo) (selectedMode as WorkoutMode.Echo).level else workoutParameters.echoLevel
         val updatedParameters = workoutParameters.copy(
-            workoutType = selectedMode.toWorkoutType(eccentricLoad),
+            programMode = selectedMode.toProgramMode(),
+            echoLevel = newEchoLevel,
+            eccentricLoad = eccentricLoad,
             weightPerCableKg = weightPerCable,
             progressionRegressionKg = weightChangeKg,
             isJustLift = true,
             useAutoStart = true, // Enable auto-start for Just Lift
-            stallDetectionEnabled = userPreferences.stallDetectionEnabled
+            stallDetectionEnabled = userPreferences.stallDetectionEnabled,
+            selectedExerciseId = null // Issue #97: Clear exercise ID for Just Lift sessions
         )
         viewModel.updateWorkoutParameters(updatedParameters)
     }
@@ -285,7 +288,7 @@ fun JustLiftScreen(
                             verticalArrangement = Arrangement.Center
                         ) {
                             val weightSuffix = if (weightUnit == WeightUnit.LB) "lbs" else "kg"
-                            val maxWeight = if (weightUnit == WeightUnit.LB) 220f else 100f
+                            val maxWeight = if (weightUnit == WeightUnit.LB) 242f else 110f  // 110kg per cable max
                             val weightStep = if (weightUnit == WeightUnit.LB) 0.5f else 0.25f
                             val displayWeight = viewModel.kgToDisplay(weightPerCable, weightUnit)
 

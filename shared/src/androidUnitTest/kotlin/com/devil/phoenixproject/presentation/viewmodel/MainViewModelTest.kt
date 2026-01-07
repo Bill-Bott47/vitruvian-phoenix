@@ -1,7 +1,7 @@
 package com.devil.phoenixproject.presentation.viewmodel
 
 import app.cash.turbine.test
-import com.devil.phoenixproject.data.preferences.UserPreferences
+import com.devil.phoenixproject.domain.model.UserPreferences
 import com.devil.phoenixproject.data.repository.ScannedDevice
 import com.devil.phoenixproject.domain.model.ConnectionState
 import com.devil.phoenixproject.domain.model.ProgramMode
@@ -9,7 +9,7 @@ import com.devil.phoenixproject.domain.model.Routine
 import com.devil.phoenixproject.domain.model.WeightUnit
 import com.devil.phoenixproject.domain.model.WorkoutParameters
 import com.devil.phoenixproject.domain.model.WorkoutState
-import com.devil.phoenixproject.domain.model.WorkoutType
+import com.devil.phoenixproject.domain.model.WorkoutMetric
 import com.devil.phoenixproject.domain.usecase.RepCounterFromMachine
 import com.devil.phoenixproject.testutil.FakeBleRepository
 import com.devil.phoenixproject.testutil.FakeExerciseRepository
@@ -85,7 +85,7 @@ class MainViewModelTest {
     @Test
     fun `initial workout parameters are default values`() = runTest {
         val params = viewModel.workoutParameters.value
-        assertIs<WorkoutType.Program>(params.workoutType)
+        assertEquals(ProgramMode.OldSchool, params.programMode)
         assertEquals(10, params.reps)
         assertEquals(10f, params.weightPerCableKg)
         assertFalse(params.isJustLift)
@@ -136,7 +136,7 @@ class MainViewModelTest {
     @Test
     fun `updateWorkoutParameters updates state`() = runTest {
         val newParams = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.Pump),
+            programMode = ProgramMode.Pump,
             reps = 15,
             weightPerCableKg = 25f,
             progressionRegressionKg = 2.5f,
@@ -315,5 +315,96 @@ class MainViewModelTest {
     fun `scannedDevices is initially empty`() = runTest {
         // ViewModel maintains its own scannedDevices state (initialized empty)
         assertEquals(emptyList<ScannedDevice>(), viewModel.scannedDevices.value)
+    }
+
+    @Test
+    fun `startWorkout sends commands and moves to active`() = runTest {
+        viewModel.updateWorkoutParameters(
+            WorkoutParameters(
+                programMode = ProgramMode.OldSchool,
+                reps = 2,
+                warmupReps = 0,
+                weightPerCableKg = 20f
+            )
+        )
+
+        fakeBleRepository.emitMetric(
+            WorkoutMetric(
+                positionA = 100f,
+                positionB = 100f,
+                loadA = 10f,
+                loadB = 10f
+            )
+        )
+
+        viewModel.startWorkout(skipCountdown = true)
+        advanceUntilIdle()
+
+        assertEquals(WorkoutState.Active, viewModel.workoutState.value)
+        assertEquals(3, fakeBleRepository.commandsReceived.size)
+    }
+
+    @Test
+    fun `rep events update counts and stop workout at target`() = runTest {
+        viewModel.updateWorkoutParameters(
+            WorkoutParameters(
+                programMode = ProgramMode.OldSchool,
+                reps = 2,
+                warmupReps = 0,
+                weightPerCableKg = 20f
+            )
+        )
+
+        val metric = WorkoutMetric(positionA = 100f, positionB = 100f, loadA = 10f, loadB = 10f)
+        fakeBleRepository.emitMetric(metric)
+        viewModel.startWorkout(skipCountdown = true)
+        advanceUntilIdle()
+
+        emitRepNotification(repIndex = 1, metric = metric)
+        emitRepNotification(repIndex = 2, metric = metric)
+        advanceUntilIdle()
+
+        assertIs<WorkoutState.SetSummary>(viewModel.workoutState.value)
+        assertEquals(1, fakeWorkoutRepository.getRecentSessionsSync(10).size)
+        assertEquals(2, viewModel.repCount.value.workingReps)
+    }
+
+    @Test
+    fun `disconnect during workout sets connection lost flag`() = runTest {
+        fakeBleRepository.simulateConnect("Vee_Test", "AA:BB:CC:DD:EE:FF")
+        advanceUntilIdle()
+
+        viewModel.updateWorkoutParameters(
+            WorkoutParameters(
+                programMode = ProgramMode.OldSchool,
+                reps = 1,
+                warmupReps = 0,
+                weightPerCableKg = 20f
+            )
+        )
+        viewModel.startWorkout(skipCountdown = true)
+        advanceUntilIdle()
+
+        fakeBleRepository.simulateDisconnect()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.connectionLostDuringWorkout.value)
+    }
+
+    private suspend fun emitRepNotification(repIndex: Int, metric: WorkoutMetric) {
+        fakeBleRepository.emitMetric(metric)
+        fakeBleRepository.emitRepNotification(
+            com.devil.phoenixproject.data.repository.RepNotification(
+                topCounter = repIndex,
+                completeCounter = repIndex,
+                repsRomCount = repIndex,
+                repsSetCount = repIndex,
+                rangeTop = 800f,
+                rangeBottom = 0f,
+                rawData = ByteArray(24),
+                timestamp = repIndex.toLong()
+            )
+        )
+        fakeBleRepository.emitMetric(metric)
     }
 }

@@ -11,7 +11,7 @@ class WorkoutParametersTest {
     @Test
     fun `default values are set correctly for Program mode`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 10
         )
 
@@ -32,7 +32,7 @@ class WorkoutParametersTest {
     @Test
     fun `Just Lift params have correct settings`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 0,
             weightPerCableKg = 30f,
             isJustLift = true,
@@ -49,28 +49,29 @@ class WorkoutParametersTest {
     @Test
     fun `Echo mode params work correctly`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Echo(EchoLevel.HARDEST, EccentricLoad.LOAD_120),
+            programMode = ProgramMode.Echo,
             reps = 8,
-            selectedExerciseId = "squat-001"
+            selectedExerciseId = "squat-001",
+            echoLevel = EchoLevel.HARDEST,
+            eccentricLoad = EccentricLoad.LOAD_120
         )
 
-        val type = params.workoutType
-        assertTrue(type is WorkoutType.Echo)
-        assertEquals(EchoLevel.HARDEST, type.level)
-        assertEquals(EccentricLoad.LOAD_120, type.eccentricLoad)
+        assertEquals(ProgramMode.Echo, params.programMode)
+        assertEquals(EchoLevel.HARDEST, params.echoLevel)
+        assertEquals(EccentricLoad.LOAD_120, params.eccentricLoad)
         assertEquals("squat-001", params.selectedExerciseId)
     }
 
     @Test
     fun `stopAtTop can be configured`() {
         val paramsBottom = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 10,
             stopAtTop = false
         )
 
         val paramsTop = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 10,
             stopAtTop = true
         )
@@ -82,7 +83,7 @@ class WorkoutParametersTest {
     @Test
     fun `warmupReps can be customized`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 10,
             warmupReps = 5
         )
@@ -93,7 +94,7 @@ class WorkoutParametersTest {
     @Test
     fun `stall detection can be disabled`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 10,
             stallDetectionEnabled = false
         )
@@ -104,7 +105,7 @@ class WorkoutParametersTest {
     @Test
     fun `last used and PR weights are stored`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 10,
             lastUsedWeightKg = 40f,
             prWeightKg = 50f
@@ -117,7 +118,7 @@ class WorkoutParametersTest {
     @Test
     fun `progressionRegressionKg is stored`() {
         val params = WorkoutParameters(
-            workoutType = WorkoutType.Program(ProgramMode.OldSchool),
+            programMode = ProgramMode.OldSchool,
             reps = 10,
             weightPerCableKg = 25f,
             progressionRegressionKg = 2.5f

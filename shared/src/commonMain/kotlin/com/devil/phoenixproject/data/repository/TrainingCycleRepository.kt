@@ -51,6 +51,11 @@ interface TrainingCycleRepository {
     suspend fun setActiveCycle(cycleId: String)
 
     /**
+     * Deactivate all cycles (no active cycle).
+     */
+    suspend fun clearActiveCycle()
+
+    /**
      * Delete a training cycle and all its related data.
      */
     suspend fun deleteCycle(cycleId: String)

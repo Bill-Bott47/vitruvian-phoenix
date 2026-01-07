@@ -42,6 +42,7 @@ import com.devil.phoenixproject.presentation.viewmodel.HistoryItem
 import com.devil.phoenixproject.util.ColorScheme
 import com.devil.phoenixproject.util.ColorSchemes
 import kotlinx.coroutines.launch
+import com.devil.phoenixproject.presentation.components.CountdownDropdown
 import com.devil.phoenixproject.presentation.components.EmptyState
 import com.devil.phoenixproject.ui.theme.*
 import com.devil.phoenixproject.util.KmpUtils
@@ -333,6 +334,7 @@ fun WorkoutHistoryCard(
                             formatWeight = formatWeight,
                             onContinue = { },
                             autoplayEnabled = false,
+                            summaryCountdownSeconds = 0,  // History view - no auto-continue
                             isHistoryView = true,
                             savedRpe = session.rpe
                         )
@@ -720,6 +722,7 @@ fun GroupedRoutineCard(
                                 formatWeight = formatWeight,
                                 onContinue = { },
                                 autoplayEnabled = false,
+                                summaryCountdownSeconds = 0,  // History view - no auto-continue
                                 isHistoryView = true,
                                 savedRpe = session.rpe
                             )
@@ -926,6 +929,8 @@ fun SettingsTab(
     darkModeEnabled: Boolean,
     stallDetectionEnabled: Boolean = true,
     audioRepCountEnabled: Boolean = false,
+    summaryCountdownSeconds: Int = 10,
+    autoStartCountdownSeconds: Int = 5,
     selectedColorSchemeIndex: Int = 0,
     onWeightUnitChange: (WeightUnit) -> Unit,
     onAutoplayChange: (Boolean) -> Unit,
@@ -934,6 +939,8 @@ fun SettingsTab(
     onDarkModeChange: (Boolean) -> Unit,
     onStallDetectionChange: (Boolean) -> Unit,
     onAudioRepCountChange: (Boolean) -> Unit,
+    onSummaryCountdownChange: (Int) -> Unit = {},
+    onAutoStartCountdownChange: (Int) -> Unit = {},
     onColorSchemeChange: (Int) -> Unit,
     onDeleteAllWorkouts: () -> Unit,
     onNavigateToConnectionLogs: () -> Unit = {},
@@ -1280,6 +1287,71 @@ fun SettingsTab(
                     Switch(
                         checked = autoplayEnabled,
                         onCheckedChange = onAutoplayChange
+                    )
+                }
+
+                // Summary Countdown - only show when autoplay is enabled
+                if (autoplayEnabled) {
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Summary Countdown",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Time before auto-advancing to next exercise",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        CountdownDropdown(
+                            label = "",
+                            selectedValue = summaryCountdownSeconds,
+                            options = listOf(0, 5, 10, 15, 20, 25, 30),
+                            onValueSelected = { onSummaryCountdownChange(it) },
+                            modifier = Modifier.width(100.dp),
+                            formatLabel = { if (it == 0) "Off" else "${it}s" }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Autostart Countdown - always visible
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Autostart Countdown",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Just Lift countdown when handles are grabbed",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    CountdownDropdown(
+                        label = "",
+                        selectedValue = autoStartCountdownSeconds,
+                        options = (2..10).toList(),
+                        onValueSelected = { onAutoStartCountdownChange(it) },
+                        modifier = Modifier.width(100.dp)
                     )
                 }
 
@@ -1895,7 +1967,7 @@ fun SettingsTab(
                 )
             }
                 Spacer(modifier = Modifier.height(Spacing.small))
-                Text("Version: 0.2.0", color = MaterialTheme.colorScheme.onSurface)
+                Text("Version: 0.3.0", color = MaterialTheme.colorScheme.onSurface)
                 Spacer(modifier = Modifier.height(Spacing.small))
                 Text(
                     "Open source community project to control Vitruvian Trainer machines locally.",

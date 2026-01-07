@@ -5,7 +5,7 @@ import androidx.compose.runtime.*
 import androidx.navigation.NavController
 import com.devil.phoenixproject.data.repository.ExerciseRepository
 import com.devil.phoenixproject.domain.model.*
-import com.devil.phoenixproject.presentation.components.BadgeCelebrationQueue
+import com.devil.phoenixproject.presentation.components.BatchedBadgeCelebrationDialog
 import com.devil.phoenixproject.presentation.components.ConnectionErrorDialog
 import com.devil.phoenixproject.presentation.components.HapticFeedbackEffect
 import com.devil.phoenixproject.presentation.components.PRCelebrationDialog
@@ -169,7 +169,7 @@ fun ActiveWorkoutScreen(
         connectionState, workoutState, currentMetric, currentHeuristicKgMax, workoutParameters,
         repCount, repRanges, autoStopState, weightUnit, enableVideoPlayback,
         loadedRoutine, currentExerciseIndex, currentSetIndex, userPreferences.autoplayEnabled,
-        loadBaselineA, loadBaselineB, canGoBack, canSkipForward
+        userPreferences.summaryCountdownSeconds, loadBaselineA, loadBaselineB, canGoBack, canSkipForward
     ) {
         WorkoutUiState(
             connectionState = connectionState,
@@ -186,6 +186,7 @@ fun ActiveWorkoutScreen(
             currentExerciseIndex = currentExerciseIndex,
             currentSetIndex = currentSetIndex,
             autoplayEnabled = userPreferences.autoplayEnabled,
+            summaryCountdownSeconds = userPreferences.summaryCountdownSeconds,
             isWorkoutSetupDialogVisible = false,
             showConnectionCard = false,
             showWorkoutSetupCard = false,
@@ -276,17 +277,18 @@ fun ActiveWorkoutScreen(
         )
     }
 
-    // Badge Celebration Dialog Queue
+    // Batched Badge Celebration Dialog
     if (earnedBadges.isNotEmpty()) {
-        BadgeCelebrationQueue(
+        val scope = rememberCoroutineScope()
+        BatchedBadgeCelebrationDialog(
             badges = earnedBadges,
-            onAllCelebrated = { earnedBadges = emptyList() },
-            onMarkCelebrated = { badgeId ->
-                kotlinx.coroutines.MainScope().launch {
-                    gamificationRepository.markBadgeCelebrated(badgeId)
+            onDismiss = { earnedBadges = emptyList() },
+            onMarkAllCelebrated = { badgeIds ->
+                scope.launch {
+                    gamificationRepository.markBadgesCelebrated(badgeIds)
                 }
             },
-            onSoundTrigger = { viewModel.emitBadgeSound() }
+            onSoundTrigger = {}  // Empty - sound is now handled by ViewModel
         )
     }
 }
