@@ -22,6 +22,7 @@ import com.devil.phoenixproject.util.KmpUtils
 import com.devil.phoenixproject.util.format
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -3066,12 +3067,18 @@ class MainViewModel constructor(
                 else -> currentExercise?.setReps?.size ?: 0
             }
 
-            // Countdown
-            for (i in restDuration downTo 1) {
+            // Countdown using elapsed-time calculation to prevent drift
+            val startTime = currentTimeMillis()
+            val endTimeMs = startTime + (restDuration * 1000L)
+
+            while (currentTimeMillis() < endTimeMs && isActive) {
+                val remainingMs = endTimeMs - currentTimeMillis()
+                val remainingSeconds = (remainingMs / 1000L).toInt().coerceAtLeast(0)
+
                 val nextName = calculateNextExerciseName(isSingleExercise, currentExercise, routine)
 
                 _workoutState.value = WorkoutState.Resting(
-                    restSecondsRemaining = i,
+                    restSecondsRemaining = remainingSeconds,
                     nextExerciseName = nextName,
                     isLastExercise = isLastExerciseOverall,
                     currentSet = displaySetIndex,
@@ -3079,7 +3086,8 @@ class MainViewModel constructor(
                     isSupersetTransition = isInSupersetTransition,
                     supersetLabel = supersetLabel
                 )
-                delay(1000)
+
+                delay(100) // Update 10x per second for smooth display
             }
 
             if (autoplay) {
