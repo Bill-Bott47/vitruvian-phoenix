@@ -2118,7 +2118,7 @@ fun SettingsTab(
     if (showBackupDialog) {
         AlertDialog(
             onDismissRequest = { showBackupDialog = false },
-            title = { Text("Backup All Data") },
+            title = { Text("Backup All Data", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) },
             text = {
                 Text("This will export all your workout history, routines, training cycles, achievements, and settings to a JSON file.\n\nYou can use this file to restore your data later or transfer to another device.")
             },
@@ -2145,7 +2145,7 @@ fun SettingsTab(
     if (showRestoreDialog) {
         AlertDialog(
             onDismissRequest = { showRestoreDialog = false },
-            title = { Text("Restore from Backup") },
+            title = { Text("Restore from Backup", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) },
             text = {
                 Text("Select a backup file to restore your data.\n\nExisting data will NOT be overwritten - only new records will be imported.")
             },
@@ -2172,16 +2172,18 @@ fun SettingsTab(
     if (showResultDialog) {
         AlertDialog(
             onDismissRequest = { showResultDialog = false },
-            title = { Text(if (backupResult != null) "Backup Complete" else "Restore Complete") },
+            title = { Text(if (backupResult != null) "Backup Complete" else "Restore Complete", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) },
             text = {
                 if (backupResult != null) {
                     Text("Backup saved successfully to:\n$backupResult")
-                } else if (restoreResult != null) {
-                    Column {
-                        Text("Import completed!")
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Records imported: ${restoreResult!!.totalImported}")
-                        Text("Records skipped (duplicates): ${restoreResult!!.totalSkipped}")
+                } else {
+                    restoreResult?.let { result ->
+                        Column {
+                            Text("Import completed!")
+                            Spacer(modifier = Modifier.height(Spacing.small))
+                            Text("Records imported: ${result.totalImported}")
+                            Text("Records skipped (duplicates): ${result.totalSkipped}")
+                        }
                     }
                 }
             },
@@ -2201,11 +2203,11 @@ fun SettingsTab(
     if (backupInProgress || restoreInProgress) {
         AlertDialog(
             onDismissRequest = { },
-            title = { Text(if (backupInProgress) "Creating Backup..." else "Restoring Data...") },
+            title = { Text(if (backupInProgress) "Creating Backup..." else "Restoring Data...", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) },
             text = {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.medium)
                 ) {
                     CircularProgressIndicator()
                     Text("Please wait...")
