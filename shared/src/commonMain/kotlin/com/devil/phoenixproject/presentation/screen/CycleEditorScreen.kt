@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import co.touchlab.kermit.Logger
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -54,17 +55,27 @@ fun CycleEditorScreen(
 
     // Save function using ViewModel
     fun saveCycle() {
+        Logger.d { "CycleEditor: Preview button clicked, starting save..." }
         scope.launch {
-            val savedId = cycleEditorViewModel.saveCycle()
-            if (savedId != null) {
-                // Pop CycleEditor from backstack so back from Preview goes to TrainingCycles
-                navController.navigate(NavigationRoutes.CycleReview.createRoute(savedId)) {
-                    popUpTo(NavigationRoutes.TrainingCycles.route) { inclusive = false }
+            try {
+                val savedId = cycleEditorViewModel.saveCycle()
+                Logger.d { "CycleEditor: saveCycle returned: $savedId" }
+                if (savedId != null) {
+                    // Pop CycleEditor from backstack so back from Preview goes to TrainingCycles
+                    Logger.d { "CycleEditor: Navigating to CycleReview with id: $savedId" }
+                    navController.navigate(NavigationRoutes.CycleReview.createRoute(savedId)) {
+                        popUpTo(NavigationRoutes.TrainingCycles.route) { inclusive = false }
+                    }
+                } else {
+                    // Re-read state after save attempt to get the error
+                    val currentState = cycleEditorViewModel.uiState.value
+                    val errorMsg = currentState.saveError ?: "Unknown error saving cycle"
+                    Logger.e { "CycleEditor: Save failed - $errorMsg" }
+                    snackbarHostState.showSnackbar("Failed to save: $errorMsg")
                 }
-            } else {
-                uiState.saveError?.let {
-                    snackbarHostState.showSnackbar("Failed to save: $it")
-                }
+            } catch (e: Exception) {
+                Logger.e(e) { "CycleEditor: Exception during save" }
+                snackbarHostState.showSnackbar("Error: ${e.message}")
             }
         }
     }
