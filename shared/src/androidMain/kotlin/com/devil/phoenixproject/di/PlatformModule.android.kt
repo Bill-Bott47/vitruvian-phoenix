@@ -11,8 +11,10 @@ import org.koin.android.ext.koin.androidContext
 import com.devil.phoenixproject.data.repository.BleRepository
 import com.devil.phoenixproject.data.repository.KableBleRepository
 import com.devil.phoenixproject.util.AndroidCsvExporter
+import com.devil.phoenixproject.util.AndroidDataBackupManager
 import com.devil.phoenixproject.util.ConnectivityChecker
 import com.devil.phoenixproject.util.CsvExporter
+import com.devil.phoenixproject.util.DataBackupManager
 
 actual val platformModule: Module = module {
     single { DriverFactory(androidContext()) }
@@ -22,5 +24,6 @@ actual val platformModule: Module = module {
         SharedPreferencesSettings(preferences)
     }
     single<CsvExporter> { AndroidCsvExporter(androidContext()) }
+    single<DataBackupManager> { AndroidDataBackupManager(androidContext(), get()) }
     single { ConnectivityChecker(androidContext()) }
 }

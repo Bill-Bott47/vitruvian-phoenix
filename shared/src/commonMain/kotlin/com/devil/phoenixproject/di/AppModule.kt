@@ -14,6 +14,7 @@ import com.devil.phoenixproject.ui.sync.LinkAccountViewModel
 import com.devil.phoenixproject.domain.subscription.SubscriptionManager
 import com.devil.phoenixproject.domain.usecase.ProgressionUseCase
 import com.devil.phoenixproject.domain.usecase.RepCounterFromMachine
+import com.devil.phoenixproject.domain.usecase.ResolveRoutineWeightsUseCase
 import com.devil.phoenixproject.domain.usecase.TemplateConverter
 import com.devil.phoenixproject.presentation.viewmodel.MainViewModel
 import com.devil.phoenixproject.presentation.viewmodel.ConnectionLogsViewModel
@@ -69,6 +70,7 @@ val commonModule = module {
     // Use Cases
     single { RepCounterFromMachine() }
     single { ProgressionUseCase(get(), get()) }
+    factory { ResolveRoutineWeightsUseCase(get()) }
     single { TemplateConverter(get()) }
 
     // Migration

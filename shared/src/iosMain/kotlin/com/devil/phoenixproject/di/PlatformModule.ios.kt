@@ -5,7 +5,9 @@ import com.devil.phoenixproject.data.repository.BleRepository
 import com.devil.phoenixproject.data.repository.KableBleRepository
 import com.devil.phoenixproject.util.ConnectivityChecker
 import com.devil.phoenixproject.util.CsvExporter
+import com.devil.phoenixproject.util.DataBackupManager
 import com.devil.phoenixproject.util.IosCsvExporter
+import com.devil.phoenixproject.util.IosDataBackupManager
 import com.russhwolf.settings.NSUserDefaultsSettings
 import com.russhwolf.settings.Settings
 import org.koin.core.module.Module
@@ -20,5 +22,6 @@ actual val platformModule: Module = module {
         NSUserDefaultsSettings(defaults)
     }
     single<CsvExporter> { IosCsvExporter() }
+    single<DataBackupManager> { IosDataBackupManager(get()) }
     single { ConnectivityChecker() }
 }

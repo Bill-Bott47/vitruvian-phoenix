@@ -1,6 +1,6 @@
 # Vitruvian Project Phoenix - Multiplatform Control App
 
-[![Latest Release](https://img.shields.io/github/v/release/DasBluEyedDevil/Project-Phoenix-2.0?include_prereleases)](https://github.com/DasBluEyedDevil/Project-Phoenix-2.0/releases)
+[![Latest Release](https://img.shields.io/github/v/release/DasBluEyedDevil/Project-Phoenix-MP?include_prereleases)](https://github.com/DasBluEyedDevil/Project-Phoenix-MP/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0+-blue.svg)](https://kotlinlang.org)
 
@@ -10,7 +10,7 @@ A Kotlin Multiplatform application for controlling Vitruvian Trainer workout mac
 
 If you find this app useful and want to support its continued development:
 
-**[Buy Me a Coffee](https://buymeacoffee.com/vitruvianredux)**
+**[Support on Ko-fi](https://ko-fi.com/vitruvianredux)**
 
 Your support helps keep the machines running and the code flowing!
 
@@ -146,32 +146,45 @@ open iosApp/VitruvianPhoenix/VitruvianPhoenix.xcodeproj
 - **Status:** Fully Supported
 - **Max Resistance:** 220 kg (485 lbs)
 
-## What's New in v0.2.1
+## What's New in v0.3.0
 
-### Set Summary History
-- View detailed workout metrics from history by tapping workout entries
-- Expandable cards with chevron animation
-- Full SetSummaryCard display including forces, volume, and calories
-- RPE displayed when recorded
-- Graceful handling of pre-v0.2.1 workouts
+### Tablet & Responsive UI
+- Comprehensive tablet support with adaptive layouts
+- Responsive charts, dialogs, and bottom sheets
+- WindowSizeClass utility for dynamic scaling
+- Optimized for both phone and tablet displays
 
-### Training Cycles Redesign
-- New day count picker for cycle creation
-- Two-panel cycle editor with drag-and-drop routine assignment
-- Per-day modifier configuration (intensity, volume, deload)
-- Cycle review screen with collapsible timeline
-- Day strip for quick navigation
-- Automatic day completion tracking
+### Training Cycles
+- Unified Cycle Creation Sheet for streamlined workflow
+- Cycle Editor with state persistence
+- Day count presets aligned with training patterns
+- Two-panel editor with drag-and-drop routine assignment
 
-### Superset Containers
-- First-class superset support with dedicated database table
-- Visual tree connectors showing superset groupings
-- Create supersets via drag-and-drop or context menu
-- Enhanced superset management dialogs
+### Echo Mode Enhancements
+- Full Echo mode support across all workout components
+- Enhanced exercise display and auto-start functionality
+- Unified ProgramMode handling across the codebase
 
-### Quality of Life
-- Screen stays awake during active workouts
-- Improved audio management for workout sounds
+### Exercise Configuration
+- New ExerciseConfigModal with mode-specific panels
+- WeightStepper component for intuitive weight input
+- ModeSelector segmented pill component
+- Tappable cards in mode confirmation screen
+
+### Gamification
+- Batched Badge Celebration Dialog for multiple unlocks
+- Resume Routine Dialog for interrupted workouts
+
+### Settings
+- Configurable autostart and summary countdown durations
+- New CountdownDropdown UI component
+
+### Bug Fixes
+- Fixed progressionRegressionKg reset on set transitions (#110)
+- Improved auto-stop release detection using firmware flags (#98)
+- Fixed max weight limit (now 110kg per cable)
+- Fixed timer accuracy for rest countdown
+- Various tablet display and UI fixes
 
 ## Contributing
 
@@ -197,9 +210,9 @@ MIT License - See [LICENSE](LICENSE) file for details
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/DasBluEyedDevil/Project-Phoenix-2.0/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/DasBluEyedDevil/Project-Phoenix-2.0/discussions)
-- **Support Development**: [Buy Me a Coffee](https://buymeacoffee.com/vitruvianredux)
+- **Issues**: [GitHub Issues](https://github.com/DasBluEyedDevil/Project-Phoenix-MP/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/DasBluEyedDevil/Project-Phoenix-MP/discussions)
+- **Support Development**: [Ko-fi](https://ko-fi.com/vitruvianredux)
 
 ---
 
