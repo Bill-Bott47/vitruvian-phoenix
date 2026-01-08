@@ -30,6 +30,7 @@ import com.devil.phoenixproject.presentation.components.ConnectorPosition
 import com.devil.phoenixproject.presentation.components.ExercisePickerDialog
 import com.devil.phoenixproject.presentation.components.ExerciseRowWithConnector
 import com.devil.phoenixproject.presentation.components.SelectionActionBar
+import com.devil.phoenixproject.presentation.components.SupersetPickerDialog
 import com.devil.phoenixproject.ui.theme.SupersetTheme
 import org.koin.compose.koinInject
 import sh.calvin.reorderable.ReorderableItem
@@ -215,6 +216,66 @@ fun RoutineEditorScreen(
                 supersets = routine.supersets + newSuperset
             )
         }
+    }
+
+    // Helper: Create new superset with selected exercises
+    fun createSupersetWithSelected() {
+        val routine = state.routine ?: return
+        val selectedExercises = state.exercises.filter { it.id in selectedExerciseIds }
+        if (selectedExercises.size < 2) return
+
+        val newSupersetId = generateSupersetId()
+        val existingColors = routine.supersets.map { it.colorIndex }.toSet()
+        val newColor = SupersetColors.next(existingColors)
+
+        // Generate name like "Superset 1", "Superset 2", etc.
+        val existingNumbers = routine.supersets
+            .mapNotNull { s ->
+                Regex("""Superset (\d+)""").find(s.name)?.groupValues?.get(1)?.toIntOrNull()
+            }
+        val nextNumber = (existingNumbers.maxOrNull() ?: 0) + 1
+        val supersetName = "Superset $nextNumber"
+
+        val newSuperset = Superset(
+            id = newSupersetId,
+            routineId = routine.id,
+            name = supersetName,
+            colorIndex = newColor,
+            orderIndex = selectedExercises.minOf { it.orderIndex }
+        )
+
+        val updatedExercises = state.exercises.map { ex ->
+            if (ex.id in selectedExerciseIds) {
+                val orderInSuperset = selectedExercises.indexOf(ex)
+                ex.copy(supersetId = newSupersetId, orderInSuperset = orderInSuperset)
+            } else ex
+        }
+
+        updateRoutine {
+            it.copy(
+                exercises = updatedExercises,
+                supersets = routine.supersets + newSuperset
+            )
+        }
+        clearSelection()
+    }
+
+    // Helper: Add selected exercises to existing superset
+    fun addSelectedToSuperset(superset: Superset) {
+        val selectedExercises = state.exercises.filter { it.id in selectedExerciseIds }
+        val currentMaxOrder = state.exercises
+            .filter { it.supersetId == superset.id }
+            .maxOfOrNull { it.orderInSuperset } ?: -1
+
+        val updatedExercises = state.exercises.map { ex ->
+            if (ex.id in selectedExerciseIds) {
+                val newOrder = currentMaxOrder + 1 + selectedExercises.indexOf(ex)
+                ex.copy(supersetId = superset.id, orderInSuperset = newOrder)
+            } else ex
+        }
+
+        updateExercises(updatedExercises)
+        clearSelection()
     }
 
     // Helper: Unlink exercise from superset (make it standalone)
@@ -686,6 +747,48 @@ fun RoutineEditorScreen(
             },
             dismissButton = {
                 TextButton(onClick = { supersetToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Superset Picker Dialog
+    if (showSupersetPickerDialog) {
+        SupersetPickerDialog(
+            existingSupersets = state.supersets,
+            onCreateNew = {
+                createSupersetWithSelected()
+                showSupersetPickerDialog = false
+            },
+            onSelectExisting = { superset ->
+                addSelectedToSuperset(superset)
+                showSupersetPickerDialog = false
+            },
+            onDismiss = { showSupersetPickerDialog = false }
+        )
+    }
+
+    // Batch Delete Dialog
+    if (showBatchDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showBatchDeleteDialog = false },
+            title = { Text("Delete ${selectedExerciseIds.size} exercises?") },
+            text = { Text("This cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val remaining = state.exercises.filter { it.id !in selectedExerciseIds }
+                        updateExercises(remaining)
+                        showBatchDeleteDialog = false
+                        clearSelection()
+                    }
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatchDeleteDialog = false }) {
                     Text("Cancel")
                 }
             }
