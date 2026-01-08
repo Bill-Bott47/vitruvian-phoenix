@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -356,15 +357,34 @@ fun RoutineEditorScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showExercisePicker = true },
-                icon = { Icon(Icons.Default.Add, null) },
-                text = { Text("Add Exercise") },
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            )
+            AnimatedVisibility(
+                visible = !selectionMode,
+                enter = fadeIn() + scaleIn(),
+                exit = fadeOut() + scaleOut()
+            ) {
+                ExtendedFloatingActionButton(
+                    onClick = { showExercisePicker = true },
+                    icon = { Icon(Icons.Default.Add, null) },
+                    text = { Text("Add Exercise") },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            }
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (selectionMode) {
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { clearSelection() }
+                    } else {
+                        Modifier
+                    }
+                )
+        ) {
             LazyColumn(
                 state = lazyListState,
                 contentPadding = PaddingValues(
