@@ -354,6 +354,7 @@ abstract class BaseDataBackupManager(
             val existingSupersetIds = queries.selectAllSupersetIds().executeAsList().toSet()
             val existingPRIds = queries.selectAllPRIds().executeAsList().toSet()
             val existingCycleIds = queries.selectAllTrainingCycles().executeAsList().map { it.id }.toSet()
+            val existingUserProfileIds = queries.selectAllUserProfileIds().executeAsList().toSet()
 
             // Track import counts
             var sessionsImported = 0
@@ -369,6 +370,16 @@ abstract class BaseDataBackupManager(
             var trainingCyclesImported = 0
             var trainingCyclesSkipped = 0
             var cycleDaysImported = 0
+            var userProfilesImported = 0
+            var userProfilesSkipped = 0
+            var cycleProgressImported = 0
+            var cycleProgressionsImported = 0
+            var plannedSetsImported = 0
+            var completedSetsImported = 0
+            var progressionEventsImported = 0
+            var earnedBadgesImported = 0
+            var streakHistoryImported = 0
+            var gamificationStatsImported = false
 
             // Wrap all imports in a transaction for atomicity
             database.transaction {
@@ -583,6 +594,147 @@ abstract class BaseDataBackupManager(
                         cycleDaysImported++
                     }
                 }
+
+                // Import user profiles
+                backup.data.userProfiles.forEach { profile ->
+                    if (profile.id !in existingUserProfileIds) {
+                        queries.insertUserProfileIgnore(
+                            id = profile.id,
+                            name = profile.name,
+                            colorIndex = profile.colorIndex.toLong(),
+                            createdAt = profile.createdAt,
+                            isActive = if (profile.isActive) 1L else 0L
+                        )
+                        userProfilesImported++
+                    } else {
+                        userProfilesSkipped++
+                    }
+                }
+
+                // Import cycle progress (only for imported cycles)
+                backup.data.cycleProgress.forEach { progress ->
+                    if (progress.cycleId in importedCycleIds) {
+                        queries.insertCycleProgressIgnore(
+                            id = progress.id,
+                            cycle_id = progress.cycleId,
+                            current_day_number = progress.currentDayNumber.toLong(),
+                            last_completed_date = progress.lastCompletedDate,
+                            cycle_start_date = progress.cycleStartDate,
+                            last_advanced_at = progress.lastAdvancedAt,
+                            completed_days = progress.completedDays,
+                            missed_days = progress.missedDays,
+                            rotation_count = progress.rotationCount.toLong()
+                        )
+                        cycleProgressImported++
+                    }
+                }
+
+                // Import cycle progressions (only for imported cycles)
+                backup.data.cycleProgressions.forEach { progression ->
+                    if (progression.cycleId in importedCycleIds) {
+                        queries.insertCycleProgressionIgnore(
+                            cycle_id = progression.cycleId,
+                            frequency_cycles = progression.frequencyCycles.toLong(),
+                            weight_increase_percent = progression.weightIncreasePercent?.toDouble(),
+                            echo_level_increase = progression.echoLevelIncrease.toLong(),
+                            eccentric_load_increase_percent = progression.eccentricLoadIncreasePercent?.toLong()
+                        )
+                        cycleProgressionsImported++
+                    }
+                }
+
+                // Import planned sets (only for imported routine exercises)
+                val importedRoutineExerciseIds = backup.data.routineExercises
+                    .filter { it.routineId in importedRoutineIds }
+                    .map { it.id }
+                    .toSet()
+
+                backup.data.plannedSets.forEach { plannedSet ->
+                    if (plannedSet.routineExerciseId in importedRoutineExerciseIds) {
+                        queries.insertPlannedSetIgnore(
+                            id = plannedSet.id,
+                            routine_exercise_id = plannedSet.routineExerciseId,
+                            set_number = plannedSet.setNumber.toLong(),
+                            set_type = plannedSet.setType,
+                            target_reps = plannedSet.targetReps?.toLong(),
+                            target_weight_kg = plannedSet.targetWeightKg?.toDouble(),
+                            target_rpe = plannedSet.targetRpe?.toLong(),
+                            rest_seconds = plannedSet.restSeconds?.toLong()
+                        )
+                        plannedSetsImported++
+                    }
+                }
+
+                // Import completed sets (only for imported sessions)
+                backup.data.completedSets.forEach { completedSet ->
+                    if (completedSet.sessionId in importedSessionIds) {
+                        queries.insertCompletedSetIgnore(
+                            id = completedSet.id,
+                            session_id = completedSet.sessionId,
+                            planned_set_id = completedSet.plannedSetId,
+                            set_number = completedSet.setNumber.toLong(),
+                            set_type = completedSet.setType,
+                            actual_reps = completedSet.actualReps.toLong(),
+                            actual_weight_kg = completedSet.actualWeightKg.toDouble(),
+                            logged_rpe = completedSet.loggedRpe?.toLong(),
+                            is_pr = if (completedSet.isPr) 1L else 0L,
+                            completed_at = completedSet.completedAt
+                        )
+                        completedSetsImported++
+                    }
+                }
+
+                // Import progression events
+                backup.data.progressionEvents.forEach { event ->
+                    queries.insertProgressionEventIgnore(
+                        id = event.id,
+                        exercise_id = event.exerciseId,
+                        suggested_weight_kg = event.suggestedWeightKg.toDouble(),
+                        previous_weight_kg = event.previousWeightKg.toDouble(),
+                        reason = event.reason,
+                        user_response = event.userResponse,
+                        actual_weight_kg = event.actualWeightKg?.toDouble(),
+                        timestamp = event.timestamp
+                    )
+                    progressionEventsImported++
+                }
+
+                // Import earned badges
+                backup.data.earnedBadges.forEach { badge ->
+                    queries.insertEarnedBadgeIgnore(
+                        badgeId = badge.badgeId,
+                        earnedAt = badge.earnedAt,
+                        celebratedAt = badge.celebratedAt
+                    )
+                    earnedBadgesImported++
+                }
+
+                // Import streak history
+                backup.data.streakHistory.forEach { streak ->
+                    queries.insertStreakHistoryIgnore(
+                        startDate = streak.startDate,
+                        endDate = streak.endDate,
+                        length = streak.length.toLong()
+                    )
+                    streakHistoryImported++
+                }
+
+                // Import gamification stats (upsert - replaces existing)
+                backup.data.gamificationStats?.let { stats ->
+                    queries.upsertGamificationStats(
+                        totalWorkouts = stats.totalWorkouts.toLong(),
+                        totalReps = stats.totalReps.toLong(),
+                        totalVolumeKg = stats.totalVolumeKg.toLong(),
+                        longestStreak = stats.longestStreak.toLong(),
+                        currentStreak = stats.currentStreak.toLong(),
+                        uniqueExercisesUsed = stats.uniqueExercisesUsed.toLong(),
+                        prsAchieved = stats.prsAchieved.toLong(),
+                        lastWorkoutDate = stats.lastWorkoutDate,
+                        streakStartDate = stats.streakStartDate,
+                        lastUpdated = stats.lastUpdated
+                    )
+                    gamificationStatsImported = true
+                }
             }
 
             Result.success(
@@ -599,7 +751,17 @@ abstract class BaseDataBackupManager(
                     personalRecordsSkipped = personalRecordsSkipped,
                     trainingCyclesImported = trainingCyclesImported,
                     trainingCyclesSkipped = trainingCyclesSkipped,
-                    cycleDaysImported = cycleDaysImported
+                    cycleDaysImported = cycleDaysImported,
+                    cycleProgressImported = cycleProgressImported,
+                    cycleProgressionsImported = cycleProgressionsImported,
+                    plannedSetsImported = plannedSetsImported,
+                    completedSetsImported = completedSetsImported,
+                    progressionEventsImported = progressionEventsImported,
+                    earnedBadgesImported = earnedBadgesImported,
+                    streakHistoryImported = streakHistoryImported,
+                    gamificationStatsImported = gamificationStatsImported,
+                    userProfilesImported = userProfilesImported,
+                    userProfilesSkipped = userProfilesSkipped
                 )
             )
         } catch (e: Exception) {
