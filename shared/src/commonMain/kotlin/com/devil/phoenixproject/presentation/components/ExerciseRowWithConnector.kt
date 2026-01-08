@@ -1,6 +1,8 @@
 package com.devil.phoenixproject.presentation.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -113,7 +115,11 @@ fun ExerciseRowWithConnector(
         }
 
         // Selection checkbox (visible in selection mode)
-        AnimatedVisibility(visible = isSelectionMode) {
+        AnimatedVisibility(
+            visible = isSelectionMode,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
             Checkbox(
                 checked = isSelected,
                 onCheckedChange = { onSelectionToggle() },
