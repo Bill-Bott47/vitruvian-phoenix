@@ -143,6 +143,19 @@ data class PersonalRecordBackup(
 )
 
 /**
+ * Backup representation of Superset (groups exercises within a routine)
+ */
+@Serializable
+data class SupersetBackup(
+    val id: String,
+    val routineId: String,
+    val name: String,
+    val colorIndex: Int = 0,
+    val restBetweenSeconds: Int = 10,
+    val orderIndex: Int = 0
+)
+
+/**
  * Backup representation of TrainingCycle (KMP extension)
  */
 @Serializable
@@ -187,6 +200,7 @@ data class BackupContent(
     val metricSamples: List<MetricSampleBackup> = emptyList(),
     val routines: List<RoutineBackup> = emptyList(),
     val routineExercises: List<RoutineExerciseBackup> = emptyList(),
+    val supersets: List<SupersetBackup> = emptyList(),
     val personalRecords: List<PersonalRecordBackup> = emptyList(),
     // KMP extensions
     val trainingCycles: List<TrainingCycleBackup> = emptyList(),
@@ -203,6 +217,8 @@ data class ImportResult(
     val routinesImported: Int,
     val routinesSkipped: Int,
     val routineExercisesImported: Int,
+    val supersetsImported: Int = 0,
+    val supersetsSkipped: Int = 0,
     val personalRecordsImported: Int,
     val personalRecordsSkipped: Int,
     val trainingCyclesImported: Int = 0,
@@ -211,10 +227,10 @@ data class ImportResult(
 ) {
     val totalImported: Int
         get() = sessionsImported + metricsImported + routinesImported +
-                routineExercisesImported + personalRecordsImported +
+                routineExercisesImported + supersetsImported + personalRecordsImported +
                 trainingCyclesImported + cycleDaysImported
 
     val totalSkipped: Int
-        get() = sessionsSkipped + routinesSkipped + personalRecordsSkipped +
+        get() = sessionsSkipped + routinesSkipped + supersetsSkipped + personalRecordsSkipped +
                 trainingCyclesSkipped
 }

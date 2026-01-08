@@ -66,6 +66,7 @@ abstract class BaseDataBackupManager(
         val metrics = queries.selectAllMetricsSync().executeAsList()
         val routines = queries.selectAllRoutinesSync().executeAsList()
         val routineExercises = queries.selectAllRoutineExercisesSync().executeAsList()
+        val supersets = queries.selectAllSupersetsSync().executeAsList()
         val personalRecords = queries.selectAllRecords { id, exerciseId, exerciseName, weight, reps, oneRepMax, achievedAt, workoutMode, prType, volume ->
             PersonalRecordBackup(
                 id = id,
@@ -191,6 +192,16 @@ abstract class BaseDataBackupManager(
                         setWeightsPercentOfPR = exercise.setWeightsPercentOfPR
                     )
                 },
+                supersets = supersets.map { superset ->
+                    SupersetBackup(
+                        id = superset.id,
+                        routineId = superset.routineId,
+                        name = superset.name,
+                        colorIndex = superset.colorIndex.toInt(),
+                        restBetweenSeconds = superset.restBetweenSeconds.toInt(),
+                        orderIndex = superset.orderIndex.toInt()
+                    )
+                },
                 personalRecords = personalRecords,
                 trainingCycles = trainingCycles.map { cycle ->
                     TrainingCycleBackup(
@@ -227,214 +238,240 @@ abstract class BaseDataBackupManager(
                 // Log warning but continue - forward compatibility via ignoreUnknownKeys
             }
 
-            // Get existing IDs for duplicate detection
+            // Get existing IDs for duplicate detection (before transaction)
             val existingSessionIds = queries.selectAllSessionIds().executeAsList().toSet()
             val existingRoutineIds = queries.selectAllRoutineIds().executeAsList().toSet()
+            val existingSupersetIds = queries.selectAllSupersetIds().executeAsList().toSet()
             val existingPRIds = queries.selectAllPRIds().executeAsList().toSet()
-
-            var sessionsImported = 0
-            var sessionsSkipped = 0
-            backup.data.workoutSessions.forEach { session ->
-                if (session.id !in existingSessionIds) {
-                    queries.insertSession(
-                        id = session.id,
-                        timestamp = session.timestamp,
-                        mode = session.mode,
-                        targetReps = session.targetReps.toLong(),
-                        weightPerCableKg = session.weightPerCableKg.toDouble(),
-                        progressionKg = session.progressionKg.toDouble(),
-                        duration = session.duration,
-                        totalReps = session.totalReps.toLong(),
-                        warmupReps = session.warmupReps.toLong(),
-                        workingReps = session.workingReps.toLong(),
-                        isJustLift = if (session.isJustLift) 1L else 0L,
-                        stopAtTop = if (session.stopAtTop) 1L else 0L,
-                        eccentricLoad = session.eccentricLoad.toLong(),
-                        echoLevel = session.echoLevel.toLong(),
-                        exerciseId = session.exerciseId,
-                        exerciseName = session.exerciseName,
-                        routineSessionId = session.routineSessionId,
-                        routineName = session.routineName,
-                        safetyFlags = session.safetyFlags.toLong(),
-                        deloadWarningCount = session.deloadWarningCount.toLong(),
-                        romViolationCount = session.romViolationCount.toLong(),
-                        spotterActivations = session.spotterActivations.toLong(),
-                        // New summary metrics
-                        peakForceConcentricA = session.peakForceConcentricA?.toDouble(),
-                        peakForceConcentricB = session.peakForceConcentricB?.toDouble(),
-                        peakForceEccentricA = session.peakForceEccentricA?.toDouble(),
-                        peakForceEccentricB = session.peakForceEccentricB?.toDouble(),
-                        avgForceConcentricA = session.avgForceConcentricA?.toDouble(),
-                        avgForceConcentricB = session.avgForceConcentricB?.toDouble(),
-                        avgForceEccentricA = session.avgForceEccentricA?.toDouble(),
-                        avgForceEccentricB = session.avgForceEccentricB?.toDouble(),
-                        heaviestLiftKg = session.heaviestLiftKg?.toDouble(),
-                        totalVolumeKg = session.totalVolumeKg?.toDouble(),
-                        estimatedCalories = session.estimatedCalories?.toDouble(),
-                        warmupAvgWeightKg = session.warmupAvgWeightKg?.toDouble(),
-                        workingAvgWeightKg = session.workingAvgWeightKg?.toDouble(),
-                        burnoutAvgWeightKg = session.burnoutAvgWeightKg?.toDouble(),
-                        peakWeightKg = session.peakWeightKg?.toDouble(),
-                        rpe = session.rpe?.toLong()
-                    )
-                    sessionsImported++
-                } else {
-                    sessionsSkipped++
-                }
-            }
-
-            // Import metrics (only for imported sessions)
-            var metricsImported = 0
-            val importedSessionIds = backup.data.workoutSessions
-                .filter { it.id !in existingSessionIds }
-                .map { it.id }
-                .toSet()
-
-            backup.data.metricSamples.forEach { metric ->
-                if (metric.sessionId in importedSessionIds) {
-                    queries.insertMetric(
-                        sessionId = metric.sessionId,
-                        timestamp = metric.timestamp,
-                        position = metric.position?.toDouble(),
-                        positionB = metric.positionB?.toDouble(),
-                        velocity = metric.velocity?.toDouble(),
-                        velocityB = metric.velocityB?.toDouble(),
-                        load = metric.load?.toDouble(),
-                        loadB = metric.loadB?.toDouble(),
-                        power = metric.power?.toDouble(),
-                        status = metric.status.toLong()
-                    )
-                    metricsImported++
-                }
-            }
-
-            // Import routines
-            var routinesImported = 0
-            var routinesSkipped = 0
-            backup.data.routines.forEach { routine ->
-                if (routine.id !in existingRoutineIds) {
-                    queries.insertRoutine(
-                        id = routine.id,
-                        name = routine.name,
-                        description = routine.description,
-                        createdAt = routine.createdAt,
-                        lastUsed = routine.lastUsed,
-                        useCount = routine.useCount.toLong()
-                    )
-                    routinesImported++
-                } else {
-                    routinesSkipped++
-                }
-            }
-
-            // Import routine exercises (only for imported routines)
-            var routineExercisesImported = 0
-            val importedRoutineIds = backup.data.routines
-                .filter { it.id !in existingRoutineIds }
-                .map { it.id }
-                .toSet()
-
-            backup.data.routineExercises.forEach { exercise ->
-                if (exercise.routineId in importedRoutineIds) {
-                    queries.insertRoutineExerciseIgnore(
-                        id = exercise.id,
-                        routineId = exercise.routineId,
-                        exerciseName = exercise.exerciseName,
-                        exerciseMuscleGroup = exercise.exerciseMuscleGroup,
-                        exerciseEquipment = exercise.exerciseEquipment,
-                        exerciseDefaultCableConfig = exercise.exerciseDefaultCableConfig,
-                        exerciseId = exercise.exerciseId,
-                        cableConfig = exercise.cableConfig,
-                        orderIndex = exercise.orderIndex.toLong(),
-                        setReps = exercise.setReps,
-                        weightPerCableKg = exercise.weightPerCableKg.toDouble(),
-                        setWeights = exercise.setWeights,
-                        mode = exercise.mode,
-                        eccentricLoad = exercise.eccentricLoad.toLong(),
-                        echoLevel = exercise.echoLevel.toLong(),
-                        progressionKg = exercise.progressionKg.toDouble(),
-                        restSeconds = exercise.restSeconds.toLong(),
-                        duration = exercise.duration?.toLong(),
-                        setRestSeconds = exercise.setRestSeconds,
-                        perSetRestTime = if (exercise.perSetRestTime) 1L else 0L,
-                        isAMRAP = if (exercise.isAMRAP) 1L else 0L,
-                        supersetId = exercise.supersetId,
-                        orderInSuperset = exercise.orderInSuperset.toLong(),
-                        // PR percentage scaling fields
-                        usePercentOfPR = if (exercise.usePercentOfPR) 1L else 0L,
-                        weightPercentOfPR = exercise.weightPercentOfPR.toLong(),
-                        prTypeForScaling = exercise.prTypeForScaling,
-                        setWeightsPercentOfPR = exercise.setWeightsPercentOfPR
-                    )
-                    routineExercisesImported++
-                }
-            }
-
-            // Import personal records
-            var personalRecordsImported = 0
-            var personalRecordsSkipped = 0
-            backup.data.personalRecords.forEach { pr ->
-                if (pr.id !in existingPRIds) {
-                    queries.insertRecord(
-                        exerciseId = pr.exerciseId,
-                        exerciseName = pr.exerciseName,
-                        weight = pr.weight.toDouble(),
-                        reps = pr.reps.toLong(),
-                        oneRepMax = pr.oneRepMax.toDouble(),
-                        achievedAt = pr.achievedAt,
-                        workoutMode = pr.workoutMode,
-                        prType = pr.prType,
-                        volume = pr.volume.toDouble()
-                    )
-                    personalRecordsImported++
-                } else {
-                    personalRecordsSkipped++
-                }
-            }
-
-            // Import training cycles
-            var trainingCyclesImported = 0
-            var trainingCyclesSkipped = 0
             val existingCycleIds = queries.selectAllTrainingCycles().executeAsList().map { it.id }.toSet()
 
-            backup.data.trainingCycles.forEach { cycle ->
-                if (cycle.id !in existingCycleIds) {
-                    queries.insertTrainingCycle(
-                        id = cycle.id,
-                        name = cycle.name,
-                        description = cycle.description,
-                        created_at = cycle.createdAt,
-                        is_active = if (cycle.isActive) 1L else 0L
-                    )
-                    trainingCyclesImported++
-                } else {
-                    trainingCyclesSkipped++
-                }
-            }
-
-            // Import cycle days (only for imported cycles)
+            // Track import counts
+            var sessionsImported = 0
+            var sessionsSkipped = 0
+            var metricsImported = 0
+            var routinesImported = 0
+            var routinesSkipped = 0
+            var routineExercisesImported = 0
+            var supersetsImported = 0
+            var supersetsSkipped = 0
+            var personalRecordsImported = 0
+            var personalRecordsSkipped = 0
+            var trainingCyclesImported = 0
+            var trainingCyclesSkipped = 0
             var cycleDaysImported = 0
-            val importedCycleIds = backup.data.trainingCycles
-                .filter { it.id !in existingCycleIds }
-                .map { it.id }
-                .toSet()
 
-            backup.data.cycleDays.forEach { day ->
-                if (day.cycleId in importedCycleIds) {
-                    queries.insertCycleDay(
-                        id = day.id,
-                        cycle_id = day.cycleId,
-                        day_number = day.dayNumber.toLong(),
-                        name = day.name,
-                        routine_id = day.routineId,
-                        is_rest_day = if (day.isRestDay) 1L else 0L,
-                        echo_level = null,
-                        eccentric_load_percent = null,
-                        weight_progression_percent = null,
-                        rep_modifier = null,
-                        rest_time_override_seconds = null
-                    )
-                    cycleDaysImported++
+            // Wrap all imports in a transaction for atomicity
+            database.transaction {
+                // Import workout sessions
+                backup.data.workoutSessions.forEach { session ->
+                    if (session.id !in existingSessionIds) {
+                        queries.insertSession(
+                            id = session.id,
+                            timestamp = session.timestamp,
+                            mode = session.mode,
+                            targetReps = session.targetReps.toLong(),
+                            weightPerCableKg = session.weightPerCableKg.toDouble(),
+                            progressionKg = session.progressionKg.toDouble(),
+                            duration = session.duration,
+                            totalReps = session.totalReps.toLong(),
+                            warmupReps = session.warmupReps.toLong(),
+                            workingReps = session.workingReps.toLong(),
+                            isJustLift = if (session.isJustLift) 1L else 0L,
+                            stopAtTop = if (session.stopAtTop) 1L else 0L,
+                            eccentricLoad = session.eccentricLoad.toLong(),
+                            echoLevel = session.echoLevel.toLong(),
+                            exerciseId = session.exerciseId,
+                            exerciseName = session.exerciseName,
+                            routineSessionId = session.routineSessionId,
+                            routineName = session.routineName,
+                            safetyFlags = session.safetyFlags.toLong(),
+                            deloadWarningCount = session.deloadWarningCount.toLong(),
+                            romViolationCount = session.romViolationCount.toLong(),
+                            spotterActivations = session.spotterActivations.toLong(),
+                            peakForceConcentricA = session.peakForceConcentricA?.toDouble(),
+                            peakForceConcentricB = session.peakForceConcentricB?.toDouble(),
+                            peakForceEccentricA = session.peakForceEccentricA?.toDouble(),
+                            peakForceEccentricB = session.peakForceEccentricB?.toDouble(),
+                            avgForceConcentricA = session.avgForceConcentricA?.toDouble(),
+                            avgForceConcentricB = session.avgForceConcentricB?.toDouble(),
+                            avgForceEccentricA = session.avgForceEccentricA?.toDouble(),
+                            avgForceEccentricB = session.avgForceEccentricB?.toDouble(),
+                            heaviestLiftKg = session.heaviestLiftKg?.toDouble(),
+                            totalVolumeKg = session.totalVolumeKg?.toDouble(),
+                            estimatedCalories = session.estimatedCalories?.toDouble(),
+                            warmupAvgWeightKg = session.warmupAvgWeightKg?.toDouble(),
+                            workingAvgWeightKg = session.workingAvgWeightKg?.toDouble(),
+                            burnoutAvgWeightKg = session.burnoutAvgWeightKg?.toDouble(),
+                            peakWeightKg = session.peakWeightKg?.toDouble(),
+                            rpe = session.rpe?.toLong()
+                        )
+                        sessionsImported++
+                    } else {
+                        sessionsSkipped++
+                    }
+                }
+
+                // Import metrics (only for imported sessions)
+                val importedSessionIds = backup.data.workoutSessions
+                    .filter { it.id !in existingSessionIds }
+                    .map { it.id }
+                    .toSet()
+
+                backup.data.metricSamples.forEach { metric ->
+                    if (metric.sessionId in importedSessionIds) {
+                        queries.insertMetric(
+                            sessionId = metric.sessionId,
+                            timestamp = metric.timestamp,
+                            position = metric.position?.toDouble(),
+                            positionB = metric.positionB?.toDouble(),
+                            velocity = metric.velocity?.toDouble(),
+                            velocityB = metric.velocityB?.toDouble(),
+                            load = metric.load?.toDouble(),
+                            loadB = metric.loadB?.toDouble(),
+                            power = metric.power?.toDouble(),
+                            status = metric.status.toLong()
+                        )
+                        metricsImported++
+                    }
+                }
+
+                // Import routines
+                backup.data.routines.forEach { routine ->
+                    if (routine.id !in existingRoutineIds) {
+                        queries.insertRoutine(
+                            id = routine.id,
+                            name = routine.name,
+                            description = routine.description,
+                            createdAt = routine.createdAt,
+                            lastUsed = routine.lastUsed,
+                            useCount = routine.useCount.toLong()
+                        )
+                        routinesImported++
+                    } else {
+                        routinesSkipped++
+                    }
+                }
+
+                // Import supersets (BEFORE routine exercises since exercises reference supersets)
+                val importedRoutineIds = backup.data.routines
+                    .filter { it.id !in existingRoutineIds }
+                    .map { it.id }
+                    .toSet()
+
+                backup.data.supersets.forEach { superset ->
+                    // Import superset if its routine is being imported or if superset doesn't exist
+                    if (superset.routineId in importedRoutineIds || superset.id !in existingSupersetIds) {
+                        if (superset.id !in existingSupersetIds) {
+                            queries.insertSupersetIgnore(
+                                id = superset.id,
+                                routineId = superset.routineId,
+                                name = superset.name,
+                                colorIndex = superset.colorIndex.toLong(),
+                                restBetweenSeconds = superset.restBetweenSeconds.toLong(),
+                                orderIndex = superset.orderIndex.toLong()
+                            )
+                            supersetsImported++
+                        } else {
+                            supersetsSkipped++
+                        }
+                    }
+                }
+
+                // Import routine exercises (only for imported routines)
+                backup.data.routineExercises.forEach { exercise ->
+                    if (exercise.routineId in importedRoutineIds) {
+                        queries.insertRoutineExerciseIgnore(
+                            id = exercise.id,
+                            routineId = exercise.routineId,
+                            exerciseName = exercise.exerciseName,
+                            exerciseMuscleGroup = exercise.exerciseMuscleGroup,
+                            exerciseEquipment = exercise.exerciseEquipment,
+                            exerciseDefaultCableConfig = exercise.exerciseDefaultCableConfig,
+                            exerciseId = exercise.exerciseId,
+                            cableConfig = exercise.cableConfig,
+                            orderIndex = exercise.orderIndex.toLong(),
+                            setReps = exercise.setReps,
+                            weightPerCableKg = exercise.weightPerCableKg.toDouble(),
+                            setWeights = exercise.setWeights,
+                            mode = exercise.mode,
+                            eccentricLoad = exercise.eccentricLoad.toLong(),
+                            echoLevel = exercise.echoLevel.toLong(),
+                            progressionKg = exercise.progressionKg.toDouble(),
+                            restSeconds = exercise.restSeconds.toLong(),
+                            duration = exercise.duration?.toLong(),
+                            setRestSeconds = exercise.setRestSeconds,
+                            perSetRestTime = if (exercise.perSetRestTime) 1L else 0L,
+                            isAMRAP = if (exercise.isAMRAP) 1L else 0L,
+                            supersetId = exercise.supersetId,
+                            orderInSuperset = exercise.orderInSuperset.toLong(),
+                            usePercentOfPR = if (exercise.usePercentOfPR) 1L else 0L,
+                            weightPercentOfPR = exercise.weightPercentOfPR.toLong(),
+                            prTypeForScaling = exercise.prTypeForScaling,
+                            setWeightsPercentOfPR = exercise.setWeightsPercentOfPR
+                        )
+                        routineExercisesImported++
+                    }
+                }
+
+                // Import personal records
+                backup.data.personalRecords.forEach { pr ->
+                    if (pr.id !in existingPRIds) {
+                        queries.insertRecord(
+                            exerciseId = pr.exerciseId,
+                            exerciseName = pr.exerciseName,
+                            weight = pr.weight.toDouble(),
+                            reps = pr.reps.toLong(),
+                            oneRepMax = pr.oneRepMax.toDouble(),
+                            achievedAt = pr.achievedAt,
+                            workoutMode = pr.workoutMode,
+                            prType = pr.prType,
+                            volume = pr.volume.toDouble()
+                        )
+                        personalRecordsImported++
+                    } else {
+                        personalRecordsSkipped++
+                    }
+                }
+
+                // Import training cycles
+                backup.data.trainingCycles.forEach { cycle ->
+                    if (cycle.id !in existingCycleIds) {
+                        queries.insertTrainingCycle(
+                            id = cycle.id,
+                            name = cycle.name,
+                            description = cycle.description,
+                            created_at = cycle.createdAt,
+                            is_active = if (cycle.isActive) 1L else 0L
+                        )
+                        trainingCyclesImported++
+                    } else {
+                        trainingCyclesSkipped++
+                    }
+                }
+
+                // Import cycle days (only for imported cycles)
+                val importedCycleIds = backup.data.trainingCycles
+                    .filter { it.id !in existingCycleIds }
+                    .map { it.id }
+                    .toSet()
+
+                backup.data.cycleDays.forEach { day ->
+                    if (day.cycleId in importedCycleIds) {
+                        queries.insertCycleDay(
+                            id = day.id,
+                            cycle_id = day.cycleId,
+                            day_number = day.dayNumber.toLong(),
+                            name = day.name,
+                            routine_id = day.routineId,
+                            is_rest_day = if (day.isRestDay) 1L else 0L,
+                            echo_level = null,
+                            eccentric_load_percent = null,
+                            weight_progression_percent = null,
+                            rep_modifier = null,
+                            rest_time_override_seconds = null
+                        )
+                        cycleDaysImported++
+                    }
                 }
             }
 
@@ -446,6 +483,8 @@ abstract class BaseDataBackupManager(
                     routinesImported = routinesImported,
                     routinesSkipped = routinesSkipped,
                     routineExercisesImported = routineExercisesImported,
+                    supersetsImported = supersetsImported,
+                    supersetsSkipped = supersetsSkipped,
                     personalRecordsImported = personalRecordsImported,
                     personalRecordsSkipped = personalRecordsSkipped,
                     trainingCyclesImported = trainingCyclesImported,

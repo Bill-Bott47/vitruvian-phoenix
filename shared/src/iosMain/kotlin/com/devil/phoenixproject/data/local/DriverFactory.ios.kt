@@ -37,11 +37,20 @@ actual class DriverFactory {
         // This handles cases where migrations partially failed or were skipped
         NSLog("iOS DB: Running fallback schema verification...")
 
+        // Migration 1: Exercise.one_rep_max_kg column
+        ensureExerciseOneRepMaxColumnExists(driver)
+        // Migration 2: UserProfile table
+        ensureUserProfileTableExists(driver)
+        // Migration 3-4: Superset tables and columns
+        ensureRoutineExerciseSupersetColumnsExist(driver)
+        // Migration 5: WorkoutSession summary columns
+        ensureWorkoutSessionColumnsExist(driver)
+        // Migration 6: Training cycle tables
         ensureTrainingCycleTablesExist(driver)
         verifyCriticalTablesExist(driver)
-        ensureWorkoutSessionColumnsExist(driver)
+        // Migration 7: PR percentage columns
         ensureRoutineExercisePRColumnsExist(driver)
-        ensureRoutineExerciseSupersetColumnsExist(driver)
+        // Data migration: Legacy superset data
         migrateLegacySupersetData(driver)
 
         // Now enable foreign keys for normal operation
@@ -290,6 +299,56 @@ actual class DriverFactory {
         }
 
         NSLog("iOS DB Migration: Training Cycle tables verified/created")
+    }
+
+    /**
+     * Ensure Exercise table has one_rep_max_kg column from migration 1.
+     * This column is used for %-based training features.
+     */
+    private fun ensureExerciseOneRepMaxColumnExists(driver: SqlDriver) {
+        val columnName = "one_rep_max_kg"
+        try {
+            if (!checkColumnExists(driver, "Exercise", columnName)) {
+                driver.execute(null, "ALTER TABLE Exercise ADD COLUMN one_rep_max_kg REAL DEFAULT NULL", 0)
+                NSLog("iOS DB: Added missing column '$columnName' to Exercise")
+            } else {
+                NSLog("iOS DB: Exercise.$columnName column present")
+            }
+        } catch (e: Exception) {
+            val msg = e.message ?: ""
+            if (msg.contains("duplicate column", ignoreCase = true)) {
+                NSLog("iOS DB: Column '$columnName' already exists (OK)")
+            } else {
+                NSLog("iOS DB ERROR: Failed to add column '$columnName': $msg")
+            }
+        }
+    }
+
+    /**
+     * Ensure UserProfile table exists from migration 2.
+     * This table is used for multi-user support.
+     */
+    private fun ensureUserProfileTableExists(driver: SqlDriver) {
+        val tableName = "UserProfile"
+        if (!checkTableExists(driver, tableName)) {
+            try {
+                val createTableSql = """
+                    CREATE TABLE UserProfile (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        name TEXT NOT NULL,
+                        colorIndex INTEGER NOT NULL DEFAULT 0,
+                        createdAt INTEGER NOT NULL,
+                        isActive INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent()
+                driver.execute(null, createTableSql, 0)
+                NSLog("iOS DB: Created missing table '$tableName'")
+            } catch (e: Exception) {
+                NSLog("iOS DB ERROR: Failed to create table '$tableName': ${e.message}")
+            }
+        } else {
+            NSLog("iOS DB: UserProfile table present")
+        }
     }
 
     /**

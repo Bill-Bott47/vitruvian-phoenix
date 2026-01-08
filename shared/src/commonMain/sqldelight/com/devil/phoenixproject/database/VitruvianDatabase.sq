@@ -592,6 +592,15 @@ SELECT COUNT(*) FROM Superset WHERE routineId = ?;
 selectAllSupersetsSync:
 SELECT * FROM Superset;
 
+-- Get all superset IDs for duplicate detection during import
+selectAllSupersetIds:
+SELECT id FROM Superset;
+
+-- Insert superset, ignoring duplicates (for backup import)
+insertSupersetIgnore:
+INSERT OR IGNORE INTO Superset (id, routineId, name, colorIndex, restBetweenSeconds, orderIndex)
+VALUES (?, ?, ?, ?, ?, ?);
+
 -- Update exercise superset reference (for migration and CRUD operations)
 updateExerciseSupersetRef:
 UPDATE RoutineExercise
