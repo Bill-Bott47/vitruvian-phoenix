@@ -31,6 +31,7 @@ CREATE INDEX idx_superset_routine ON Superset(routineId);
 -- Uses the supersetGroupId as both ID and name (can be renamed by user later)
 -- Takes restBetweenSeconds from the first exercise in the group
 -- Uses MIN(orderIndex) to determine superset position in routine
+-- Filter out empty strings which are functionally null but cause PK issues
 INSERT INTO Superset (id, routineId, name, colorIndex, restBetweenSeconds, orderIndex)
 SELECT
     supersetGroupId,
@@ -40,7 +41,7 @@ SELECT
     MAX(supersetRestSeconds),  -- Take the rest seconds from the group
     MIN(orderIndex)   -- Position based on first exercise in group
 FROM RoutineExercise
-WHERE supersetGroupId IS NOT NULL
+WHERE supersetGroupId IS NOT NULL AND supersetGroupId != ''
 GROUP BY supersetGroupId, routineId;
 
 -- Create new RoutineExercise table with updated columns
@@ -89,7 +90,7 @@ SELECT
     exerciseDefaultCableConfig, exerciseId, cableConfig, orderIndex, setReps,
     weightPerCableKg, setWeights, mode, eccentricLoad, echoLevel, progressionKg,
     restSeconds, duration, setRestSeconds, perSetRestTime, isAMRAP,
-    supersetGroupId,  -- Map old supersetGroupId to new supersetId
+    CASE WHEN supersetGroupId = '' THEN NULL ELSE supersetGroupId END,  -- Map old to new, treating '' as NULL
     supersetOrder     -- Map old supersetOrder to new orderInSuperset
 FROM RoutineExercise;
 
