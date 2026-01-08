@@ -43,6 +43,7 @@ import com.devil.phoenixproject.util.ColorScheme
 import com.devil.phoenixproject.util.ColorSchemes
 import com.devil.phoenixproject.util.DataBackupManager
 import com.devil.phoenixproject.util.ImportResult
+import com.devil.phoenixproject.util.rememberFilePicker
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import com.devil.phoenixproject.presentation.components.CountdownDropdown
@@ -973,6 +974,8 @@ fun SettingsTab(
     var backupResult by remember { mutableStateOf<String?>(null) }
     var restoreResult by remember { mutableStateOf<ImportResult?>(null) }
     var showResultDialog by remember { mutableStateOf(false) }
+    var launchFilePicker by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     // Easter egg tap counter for disco mode
     var easterEggTapCount by remember { mutableStateOf(0) }
     var lastTapTime by remember { mutableStateOf(0L) }
@@ -2127,7 +2130,21 @@ fun SettingsTab(
                     onClick = {
                         showBackupDialog = false
                         backupInProgress = true
-                        // Backup logic will be added in Task 8
+                        scope.launch {
+                            try {
+                                val backup = backupManager.exportAllData()
+                                val result = backupManager.saveToFile(backup)
+                                result.onSuccess { path ->
+                                    backupResult = path
+                                    showResultDialog = true
+                                }.onFailure { error ->
+                                    backupResult = "Error: ${error.message}"
+                                    showResultDialog = true
+                                }
+                            } finally {
+                                backupInProgress = false
+                            }
+                        }
                     }
                 ) {
                     Text("Create Backup")
@@ -2153,8 +2170,7 @@ fun SettingsTab(
                 Button(
                     onClick = {
                         showRestoreDialog = false
-                        restoreInProgress = true
-                        // Restore logic will be added in Task 8
+                        launchFilePicker = true
                     }
                 ) {
                     Text("Select File")
@@ -2215,6 +2231,31 @@ fun SettingsTab(
             },
             confirmButton = { }
         )
+    }
+
+    // File picker for restore operation
+    if (launchFilePicker) {
+        val filePicker = rememberFilePicker()
+        filePicker.LaunchFilePicker { selectedFile ->
+            launchFilePicker = false
+            if (selectedFile != null) {
+                restoreInProgress = true
+                scope.launch {
+                    try {
+                        val result = backupManager.importFromFile(selectedFile)
+                        result.onSuccess { importResult ->
+                            restoreResult = importResult
+                            showResultDialog = true
+                        }.onFailure { error ->
+                            backupResult = "Import failed: ${error.message}"
+                            showResultDialog = true
+                        }
+                    } finally {
+                        restoreInProgress = false
+                    }
+                }
+            }
+        }
     }
 }
 
