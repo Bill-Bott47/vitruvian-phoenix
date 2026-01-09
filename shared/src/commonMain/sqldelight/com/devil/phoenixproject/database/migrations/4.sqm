@@ -27,14 +27,12 @@ CREATE TABLE Superset (
 CREATE INDEX idx_superset_routine ON Superset(routineId);
 
 -- Migrate existing superset groups to Superset table
--- For each distinct supersetGroupId, create a Superset entry
--- Uses the supersetGroupId as both ID and name (can be renamed by user later)
--- Takes restBetweenSeconds from the first exercise in the group
--- Uses MIN(orderIndex) to determine superset position in routine
+-- Uses routineId || '_' || supersetGroupId as unique ID to prevent PK collisions
+-- when the same supersetGroupId is used across different routines
 -- Filter out empty strings which are functionally null but cause PK issues
 INSERT INTO Superset (id, routineId, name, colorIndex, restBetweenSeconds, orderIndex)
 SELECT
-    supersetGroupId,
+    routineId || '_' || supersetGroupId,  -- Unique composite ID
     routineId,
     supersetGroupId,  -- Use the group ID as the name (user can rename later)
     0,                -- Default color index
@@ -90,7 +88,10 @@ SELECT
     exerciseDefaultCableConfig, exerciseId, cableConfig, orderIndex, setReps,
     weightPerCableKg, setWeights, mode, eccentricLoad, echoLevel, progressionKg,
     restSeconds, duration, setRestSeconds, perSetRestTime, isAMRAP,
-    CASE WHEN supersetGroupId = '' THEN NULL ELSE supersetGroupId END,  -- Map old to new, treating '' as NULL
+    CASE
+        WHEN supersetGroupId = '' OR supersetGroupId IS NULL THEN NULL
+        ELSE routineId || '_' || supersetGroupId  -- Use same composite ID format
+    END,
     supersetOrder     -- Map old supersetOrder to new orderInSuperset
 FROM RoutineExercise;
 
