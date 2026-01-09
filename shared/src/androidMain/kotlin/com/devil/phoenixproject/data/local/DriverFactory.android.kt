@@ -250,13 +250,9 @@ actual class DriverFactory(private val context: Context) {
                             "UPDATE RoutineExercise SET supersetId = NULL WHERE supersetId IS NOT NULL AND supersetId NOT IN (SELECT id FROM Superset)"
                         )
                         9 -> listOf(
-                            // CycleDay missing columns (idempotent - will error on duplicate, caught by driver)
-                            "ALTER TABLE CycleDay ADD COLUMN echo_level TEXT",
-                            "ALTER TABLE CycleDay ADD COLUMN eccentric_load_percent INTEGER",
-                            "ALTER TABLE CycleDay ADD COLUMN weight_progression_percent REAL",
-                            "ALTER TABLE CycleDay ADD COLUMN rep_modifier INTEGER",
-                            "ALTER TABLE CycleDay ADD COLUMN rest_time_override_seconds INTEGER",
-                            // Superset ID regeneration handled by .sqm - just do final cleanup here
+                            // Final cleanup: Remove orphaned supersetId references after composite ID regeneration
+                            // Migration 9.sqm converts Superset IDs to composite format (routineId_originalId)
+                            // This catches any references that still point to non-existent Superset rows
                             "UPDATE RoutineExercise SET supersetId = NULL WHERE supersetId IS NOT NULL AND supersetId NOT IN (SELECT id FROM Superset)"
                         )
                         else -> emptyList()
