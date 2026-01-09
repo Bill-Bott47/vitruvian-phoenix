@@ -32,6 +32,9 @@ actual class DriverFactory(private val context: Context) {
                     Log.i(TAG, "Upgrading database from version $oldVersion to $newVersion")
 
                     for (version in oldVersion until newVersion) {
+                        // Pre-flight: ensure required columns exist before migration
+                        preflightMigration(db, version + 1)
+
                         try {
                             // Let SQLDelight apply the migration
                             VitruvianDatabase.Schema.migrate(
@@ -247,6 +250,38 @@ actual class DriverFactory(private val context: Context) {
                             "UPDATE RoutineExercise SET supersetId = NULL WHERE supersetId IS NOT NULL AND supersetId NOT IN (SELECT id FROM Superset)"
                         )
                         else -> emptyList()
+                    }
+                }
+
+                /**
+                 * Pre-flight migration setup.
+                 * Ensures required columns exist BEFORE migration runs.
+                 * This matches iOS behavior where fallbacks run before migrations.
+                 */
+                private fun preflightMigration(db: SupportSQLiteDatabase, version: Int) {
+                    val statements = when (version) {
+                        3 -> listOf(
+                            // Migration 3 SELECT requires these columns to exist
+                            // Add them if missing (will be overwritten by migration anyway)
+                            "ALTER TABLE RoutineExercise ADD COLUMN supersetGroupId TEXT",
+                            "ALTER TABLE RoutineExercise ADD COLUMN supersetOrder INTEGER NOT NULL DEFAULT 0",
+                            "ALTER TABLE RoutineExercise ADD COLUMN supersetRestSeconds INTEGER NOT NULL DEFAULT 10"
+                        )
+                        else -> emptyList()
+                    }
+
+                    for (sql in statements) {
+                        try {
+                            db.execSQL(sql)
+                            Log.d(TAG, "Preflight: executed ${sql.take(50)}...")
+                        } catch (e: SQLiteException) {
+                            // Column already exists - this is expected and OK
+                            if (e.message?.contains("duplicate column") == true) {
+                                Log.d(TAG, "Preflight: column already exists (OK)")
+                            } else {
+                                Log.w(TAG, "Preflight: ${e.message}")
+                            }
+                        }
                     }
                 }
 
