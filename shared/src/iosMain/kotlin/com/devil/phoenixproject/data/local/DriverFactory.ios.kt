@@ -1,6 +1,8 @@
 package com.devil.phoenixproject.data.local
 
 import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.db.SqlSchema
+import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import co.touchlab.sqliter.DatabaseConfiguration
 import com.devil.phoenixproject.database.VitruvianDatabase
@@ -16,22 +18,30 @@ actual class DriverFactory {
         //
         // FIX: Use a single driver creation with resilient migration handling.
         // Let SQLDelight run migrations normally, then use fallback functions to fix any gaps.
+        // If migrations fail, catch the error and use manual recovery.
 
         NSLog("iOS DB: Creating driver with resilient migration handling")
 
-        // Create driver - let SQLDelight handle migrations with FK disabled for safety
-        val driver = NativeSqliteDriver(
-            schema = VitruvianDatabase.Schema,
-            name = "vitruvian.db",
-            onConfiguration = { config ->
-                config.copy(
-                    // Keep FK disabled during migration to prevent cascade issues
-                    extendedConfig = DatabaseConfiguration.Extended(
-                        foreignKeyConstraints = false
+        // Try normal driver creation with SQLDelight migrations
+        val driver = try {
+            NativeSqliteDriver(
+                schema = VitruvianDatabase.Schema,
+                name = "vitruvian.db",
+                onConfiguration = { config ->
+                    config.copy(
+                        // Keep FK disabled during migration to prevent cascade issues
+                        extendedConfig = DatabaseConfiguration.Extended(
+                            foreignKeyConstraints = false
+                        )
                     )
-                )
-            }
-        )
+                }
+            )
+        } catch (e: Exception) {
+            // Migration failed - use recovery mode
+            NSLog("iOS DB ERROR: SQLDelight migration failed: ${e.message}")
+            NSLog("iOS DB: Attempting recovery with manual migration...")
+            createRecoveryDriver()
+        }
 
         // FALLBACK: Ensure all critical tables and columns exist regardless of migration state
         // This handles cases where migrations partially failed or were skipped
@@ -69,6 +79,50 @@ actual class DriverFactory {
 
         NSLog("iOS DB: Driver initialization complete")
         return driver
+    }
+
+    /**
+     * Creates a recovery driver that skips SQLDelight's automatic migrations.
+     * Used when normal migration fails due to schema issues.
+     *
+     * This creates a driver with a no-op schema that reports the target version
+     * but doesn't actually run migrations. Our fallback functions then fix the schema.
+     */
+    private fun createRecoveryDriver(): SqlDriver {
+        NSLog("iOS DB: Creating recovery driver (bypassing SQLDelight migrations)")
+
+        // Create a no-op schema that reports the target version but doesn't migrate
+        // This allows opening the database without crashing on migration errors
+        val noOpSchema = object : SqlSchema<QueryResult.Value<Unit>> {
+            override val version: Long = VitruvianDatabase.Schema.version
+
+            override fun create(driver: SqlDriver): QueryResult.Value<Unit> {
+                NSLog("iOS DB Recovery: Skipping schema create (using fallback functions)")
+                return QueryResult.Value(Unit)
+            }
+
+            override fun migrate(
+                driver: SqlDriver,
+                oldVersion: Long,
+                newVersion: Long,
+                vararg callbacks: app.cash.sqldelight.db.AfterVersion
+            ): QueryResult.Value<Unit> {
+                NSLog("iOS DB Recovery: Skipping SQLDelight migration $oldVersion -> $newVersion (using fallback functions)")
+                return QueryResult.Value(Unit)
+            }
+        }
+
+        return NativeSqliteDriver(
+            schema = noOpSchema,
+            name = "vitruvian.db",
+            onConfiguration = { config ->
+                config.copy(
+                    extendedConfig = DatabaseConfiguration.Extended(
+                        foreignKeyConstraints = false
+                    )
+                )
+            }
+        )
     }
 
     /**

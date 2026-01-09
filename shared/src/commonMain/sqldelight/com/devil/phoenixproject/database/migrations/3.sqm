@@ -34,22 +34,21 @@ CREATE TABLE RoutineExercise_new (
     FOREIGN KEY (exerciseId) REFERENCES Exercise(id) ON DELETE SET NULL
 );
 
--- Copy data with explicit columns (old table has 21 columns, new has 24)
--- New columns get their DEFAULT values from table definition
--- If superset columns exist in source, they'll be copied; otherwise defaults apply
+-- Copy data from old table (which does NOT have superset columns)
+-- New superset columns (supersetGroupId, supersetOrder, supersetRestSeconds)
+-- get their DEFAULT values from the new table definition
+-- IMPORTANT: Do NOT select columns that don't exist in the old table!
 INSERT INTO RoutineExercise_new (
     id, routineId, exerciseName, exerciseMuscleGroup, exerciseEquipment,
     exerciseDefaultCableConfig, exerciseId, cableConfig, orderIndex, setReps,
     weightPerCableKg, setWeights, mode, eccentricLoad, echoLevel, progressionKg,
-    restSeconds, duration, setRestSeconds, perSetRestTime, isAMRAP,
-    supersetGroupId, supersetOrder, supersetRestSeconds
+    restSeconds, duration, setRestSeconds, perSetRestTime, isAMRAP
 )
 SELECT
     id, routineId, exerciseName, exerciseMuscleGroup, exerciseEquipment,
     exerciseDefaultCableConfig, exerciseId, cableConfig, orderIndex, setReps,
     weightPerCableKg, setWeights, mode, eccentricLoad, echoLevel, progressionKg,
-    restSeconds, duration, setRestSeconds, perSetRestTime, isAMRAP,
-    supersetGroupId, supersetOrder, supersetRestSeconds
+    restSeconds, duration, setRestSeconds, perSetRestTime, isAMRAP
 FROM RoutineExercise;
 
 -- Drop old table
