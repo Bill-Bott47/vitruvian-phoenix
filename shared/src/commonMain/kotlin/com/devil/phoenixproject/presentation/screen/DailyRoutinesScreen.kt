@@ -70,15 +70,9 @@ fun DailyRoutinesScreen(
                     pendingRoutine = routine
                     showResumeDialog = true
                 } else {
-                    // No progress - start fresh
-                    viewModel.ensureConnection(
-                        onConnected = {
-                            viewModel.loadRoutine(routine)
-                            viewModel.startWorkout()
-                            navController.navigate(NavigationRoutes.ActiveWorkout.route)
-                        },
-                        onFailed = { /* Error shown via StateFlow */ }
-                    )
+                    // No progress - enter routine overview (new workflow)
+                    viewModel.enterRoutineOverview(routine)
+                    navController.navigate(NavigationRoutes.RoutineOverview.route)
                 }
             },
             onDeleteRoutine = { routineId -> viewModel.deleteRoutine(routineId) },
@@ -120,16 +114,9 @@ fun DailyRoutinesScreen(
                     },
                     onRestart = {
                         showResumeDialog = false
-                        // Restart: call loadRoutine to reset indices, then start
                         pendingRoutine?.let { routine ->
-                            viewModel.ensureConnection(
-                                onConnected = {
-                                    viewModel.loadRoutine(routine)
-                                    viewModel.startWorkout()
-                                    navController.navigate(NavigationRoutes.ActiveWorkout.route)
-                                },
-                                onFailed = { /* Error shown via StateFlow */ }
-                            )
+                            viewModel.enterRoutineOverview(routine)
+                            navController.navigate(NavigationRoutes.RoutineOverview.route)
                         }
                     },
                     onDismiss = { showResumeDialog = false }
