@@ -1,5 +1,6 @@
 package com.devil.phoenixproject.presentation.screen
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -68,6 +69,11 @@ fun RoutineOverviewScreen(
     // Stop routine confirmation dialog
     var showStopConfirmation by remember { mutableStateOf(false) }
 
+    // Handle system back press - show confirmation instead of silently exiting
+    BackHandler {
+        showStopConfirmation = true
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -122,8 +128,14 @@ fun RoutineOverviewScreen(
                     weightUnit = weightUnit,
                     formatWeight = viewModel::formatWeight,
                     onStartExercise = {
-                        viewModel.enterSetReady(page, 0)
-                        navController.navigate(NavigationRoutes.SetReady.route)
+                        // Use ensureConnection to auto-connect if needed (matches other start buttons)
+                        viewModel.ensureConnection(
+                            onConnected = {
+                                viewModel.enterSetReady(page, 0)
+                                navController.navigate(NavigationRoutes.SetReady.route)
+                            },
+                            onFailed = {} // Toast/error handled by ensureConnection
+                        )
                     }
                 )
             }

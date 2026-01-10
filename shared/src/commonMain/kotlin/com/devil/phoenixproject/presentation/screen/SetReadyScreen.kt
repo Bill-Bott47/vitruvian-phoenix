@@ -59,11 +59,9 @@ fun SetReadyScreen(
 
     val isEchoMode = currentExercise.programMode is ProgramMode.Echo
 
-    // Navigation state
-    val canGoPrev = setReadyState.exerciseIndex > 0 || setReadyState.setIndex > 0
-    val isLastSet = setReadyState.setIndex >= currentExercise.setReps.size - 1
-    val isLastExercise = setReadyState.exerciseIndex >= routine.exercises.size - 1
-    val canSkip = !(isLastSet && isLastExercise)
+    // Navigation state - uses superset-aware helpers from ViewModel
+    val canGoPrev = viewModel.hasPreviousStep(setReadyState.exerciseIndex, setReadyState.setIndex)
+    val canSkip = viewModel.hasNextStep(setReadyState.exerciseIndex, setReadyState.setIndex)
 
     // Stop confirmation dialog
     var showStopConfirmation by remember { mutableStateOf(false) }

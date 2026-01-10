@@ -1339,19 +1339,22 @@ class MainViewModel constructor(
             Logger.d { "  currentExerciseIndex=${_currentExerciseIndex.value}, currentSetIndex=${_currentSetIndex.value}" }
 
             // Check if routine is complete (for routine mode, not Just Lift)
+            // Uses superset-aware navigation to correctly detect completion
             if (routine != null && !isJustLift) {
                 val currentExercise = routine.exercises.getOrNull(_currentExerciseIndex.value)
                 val isLastSetOfExercise = _currentSetIndex.value >= (currentExercise?.setReps?.size ?: 1) - 1
-                val isLastExercise = _currentExerciseIndex.value >= routine.exercises.size - 1
 
-                // Mark exercise as completed if this was the last set
+                // Mark exercise as completed if this was the last set of THIS exercise
                 if (isLastSetOfExercise) {
                     _completedExercises.value = _completedExercises.value + _currentExerciseIndex.value
                 }
 
-                // If last set of last exercise, show completion screen
-                if (isLastSetOfExercise && isLastExercise) {
-                    Logger.d { "proceedFromSummary: Last set of last exercise - showing routine complete" }
+                // Check if there are ANY more steps using superset-aware navigation
+                val hasNextStep = getNextStep(routine, _currentExerciseIndex.value, _currentSetIndex.value) != null
+
+                // If no more steps in the entire routine, show completion screen
+                if (!hasNextStep) {
+                    Logger.d { "proceedFromSummary: No more steps - showing routine complete" }
                     showRoutineComplete()
                     return@launch
                 }
@@ -1822,45 +1825,163 @@ class MainViewModel constructor(
         }
     }
 
+    // ==================== Superset-Aware Navigation Helpers ====================
+
+    /**
+     * Determine the next step (Exercise Index, Set Index) in the workout sequence.
+     * Handles Supersets (interleaved exercises) and standard linear progression.
+     * @return Pair of (exerciseIndex, setIndex), or null if no more steps.
+     */
+    private fun getNextStep(routine: Routine, currentExIndex: Int, currentSetIndex: Int): Pair<Int, Int>? {
+        val currentExercise = routine.exercises.getOrNull(currentExIndex) ?: return null
+
+        // 1. Superset Logic - interleaved progression (A1 -> B1 -> A2 -> B2)
+        if (currentExercise.supersetId != null) {
+            val supersetExercises = routine.exercises
+                .filter { it.supersetId == currentExercise.supersetId }
+                .sortedBy { it.orderInSuperset }
+
+            val currentSupersetPos = supersetExercises.indexOf(currentExercise)
+
+            // A. Check for next exercise in the SAME set cycle
+            for (i in (currentSupersetPos + 1) until supersetExercises.size) {
+                val nextEx = supersetExercises[i]
+                if (currentSetIndex < nextEx.setReps.size) {
+                    val nextExIndex = routine.exercises.indexOf(nextEx)
+                    return nextExIndex to currentSetIndex
+                }
+            }
+
+            // B. Check for the NEXT set cycle - loop back to first exercise with next set
+            val nextSetIndex = currentSetIndex + 1
+            for (ex in supersetExercises) {
+                if (nextSetIndex < ex.setReps.size) {
+                    val nextExIndex = routine.exercises.indexOf(ex)
+                    return nextExIndex to nextSetIndex
+                }
+            }
+
+            // C. Superset Complete -> Move to next exercise after superset
+            val maxIndex = supersetExercises.maxOf { routine.exercises.indexOf(it) }
+            val nextExIndex = maxIndex + 1
+            if (nextExIndex < routine.exercises.size) {
+                return nextExIndex to 0
+            }
+            return null
+        }
+
+        // 2. Standard Linear Logic
+        if (currentSetIndex < currentExercise.setReps.size - 1) {
+            return currentExIndex to (currentSetIndex + 1)
+        } else if (currentExIndex < routine.exercises.size - 1) {
+            return (currentExIndex + 1) to 0
+        }
+
+        return null
+    }
+
+    /**
+     * Determine the previous step (Exercise Index, Set Index) in the workout sequence.
+     * Handles Supersets (interleaved exercises) and standard linear progression.
+     * @return Pair of (exerciseIndex, setIndex), or null if at the beginning.
+     */
+    private fun getPreviousStep(routine: Routine, currentExIndex: Int, currentSetIndex: Int): Pair<Int, Int>? {
+        val currentExercise = routine.exercises.getOrNull(currentExIndex) ?: return null
+
+        // 1. Superset Logic - interleaved progression
+        if (currentExercise.supersetId != null) {
+            val supersetExercises = routine.exercises
+                .filter { it.supersetId == currentExercise.supersetId }
+                .sortedBy { it.orderInSuperset }
+
+            val currentSupersetPos = supersetExercises.indexOf(currentExercise)
+
+            // A. Check for previous exercise in SAME set cycle
+            for (i in (currentSupersetPos - 1) downTo 0) {
+                val prevEx = supersetExercises[i]
+                if (currentSetIndex < prevEx.setReps.size) {
+                    val prevExIndex = routine.exercises.indexOf(prevEx)
+                    return prevExIndex to currentSetIndex
+                }
+            }
+
+            // B. Check for PREVIOUS set cycle - find last exercise that has prevSetIndex
+            val prevSetIndex = currentSetIndex - 1
+            if (prevSetIndex >= 0) {
+                for (i in supersetExercises.indices.reversed()) {
+                    val prevEx = supersetExercises[i]
+                    if (prevSetIndex < prevEx.setReps.size) {
+                        val prevExIndex = routine.exercises.indexOf(prevEx)
+                        return prevExIndex to prevSetIndex
+                    }
+                }
+            }
+
+            // C. Start of Superset -> Go to previous exercise before superset
+            val minIndex = supersetExercises.minOf { routine.exercises.indexOf(it) }
+            val prevExIndex = minIndex - 1
+            if (prevExIndex >= 0) {
+                val prevEx = routine.exercises[prevExIndex]
+                return prevExIndex to (prevEx.setReps.size - 1)
+            }
+            return null
+        }
+
+        // 2. Standard Linear Logic
+        if (currentSetIndex > 0) {
+            return currentExIndex to (currentSetIndex - 1)
+        } else if (currentExIndex > 0) {
+            val prevEx = routine.exercises[currentExIndex - 1]
+            return (currentExIndex - 1) to (prevEx.setReps.size - 1)
+        }
+
+        return null
+    }
+
+    /**
+     * Check if there is a next step in the routine from the given position.
+     */
+    fun hasNextStep(exerciseIndex: Int, setIndex: Int): Boolean {
+        val routine = _loadedRoutine.value ?: return false
+        return getNextStep(routine, exerciseIndex, setIndex) != null
+    }
+
+    /**
+     * Check if there is a previous step in the routine from the given position.
+     */
+    fun hasPreviousStep(exerciseIndex: Int, setIndex: Int): Boolean {
+        val routine = _loadedRoutine.value ?: return false
+        return getPreviousStep(routine, exerciseIndex, setIndex) != null
+    }
+
+    // ==================== End Navigation Helpers ====================
+
     /**
      * Navigate to previous set/exercise in set-ready.
+     * Uses superset-aware navigation for proper interleaved progression.
      */
     fun setReadyPrev() {
         val state = _routineFlowState.value
         if (state !is RoutineFlowState.SetReady) return
         val routine = _loadedRoutine.value ?: return
 
-        val newSetIndex = state.setIndex - 1
-        if (newSetIndex >= 0) {
-            // Previous set in same exercise
-            enterSetReady(state.exerciseIndex, newSetIndex)
-        } else if (state.exerciseIndex > 0) {
-            // Last set of previous exercise
-            val prevExercise = routine.exercises[state.exerciseIndex - 1]
-            val lastSetIndex = prevExercise.setReps.size - 1
-            enterSetReady(state.exerciseIndex - 1, lastSetIndex)
+        getPreviousStep(routine, state.exerciseIndex, state.setIndex)?.let { (exIdx, setIdx) ->
+            enterSetReady(exIdx, setIdx)
         }
-        // else: at start, do nothing
     }
 
     /**
      * Skip to next set/exercise in set-ready.
+     * Uses superset-aware navigation for proper interleaved progression.
      */
     fun setReadySkip() {
         val state = _routineFlowState.value
         if (state !is RoutineFlowState.SetReady) return
         val routine = _loadedRoutine.value ?: return
-        val currentExercise = routine.exercises.getOrNull(state.exerciseIndex) ?: return
 
-        val newSetIndex = state.setIndex + 1
-        if (newSetIndex < currentExercise.setReps.size) {
-            // Next set in same exercise
-            enterSetReady(state.exerciseIndex, newSetIndex)
-        } else if (state.exerciseIndex < routine.exercises.size - 1) {
-            // First set of next exercise
-            enterSetReady(state.exerciseIndex + 1, 0)
+        getNextStep(routine, state.exerciseIndex, state.setIndex)?.let { (exIdx, setIdx) ->
+            enterSetReady(exIdx, setIdx)
         }
-        // else: at end, do nothing
     }
 
     /**
