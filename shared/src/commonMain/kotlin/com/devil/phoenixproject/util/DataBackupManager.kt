@@ -43,6 +43,11 @@ interface DataBackupManager {
      * Get shareable content (JSON string) for sharing via platform share sheet
      */
     suspend fun getShareableContent(): String
+
+    /**
+     * Share backup via platform share sheet (Android Intent, iOS UIActivityViewController)
+     */
+    suspend fun shareBackup()
 }
 
 /**

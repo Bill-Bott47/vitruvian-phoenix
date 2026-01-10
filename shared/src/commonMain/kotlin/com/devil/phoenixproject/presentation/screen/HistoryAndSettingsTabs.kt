@@ -2126,33 +2126,58 @@ fun SettingsTab(
                 Text("This will export all your workout history, routines, training cycles, achievements, and settings to a JSON file.\n\nYou can use this file to restore your data later or transfer to another device.")
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        showBackupDialog = false
-                        backupInProgress = true
-                        scope.launch {
-                            try {
-                                val backup = backupManager.exportAllData()
-                                val result = backupManager.saveToFile(backup)
-                                result.onSuccess { path ->
-                                    backupResult = path
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.small)) {
+                    // Save to Files button
+                    Button(
+                        onClick = {
+                            showBackupDialog = false
+                            backupInProgress = true
+                            scope.launch {
+                                try {
+                                    val backup = backupManager.exportAllData()
+                                    val result = backupManager.saveToFile(backup)
+                                    result.onSuccess { path ->
+                                        backupResult = path
+                                        showResultDialog = true
+                                    }.onFailure { error ->
+                                        backupResult = "Error: ${error.message}"
+                                        showResultDialog = true
+                                    }
+                                } catch (e: Exception) {
+                                    // Handle SQLite exceptions and other errors gracefully
+                                    // instead of crashing the app
+                                    backupResult = "Export failed: ${e.message ?: "Unknown database error"}"
                                     showResultDialog = true
-                                }.onFailure { error ->
-                                    backupResult = "Error: ${error.message}"
-                                    showResultDialog = true
+                                } finally {
+                                    backupInProgress = false
                                 }
-                            } catch (e: Exception) {
-                                // Handle SQLite exceptions and other errors gracefully
-                                // instead of crashing the app
-                                backupResult = "Export failed: ${e.message ?: "Unknown database error"}"
-                                showResultDialog = true
-                            } finally {
-                                backupInProgress = false
                             }
                         }
+                    ) {
+                        Text("Save")
                     }
-                ) {
-                    Text("Create Backup")
+                    // Share button
+                    OutlinedButton(
+                        onClick = {
+                            showBackupDialog = false
+                            scope.launch {
+                                try {
+                                    backupManager.shareBackup()
+                                } catch (e: Exception) {
+                                    backupResult = "Share failed: ${e.message ?: "Unknown error"}"
+                                    showResultDialog = true
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.Share,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Share")
+                    }
                 }
             },
             dismissButton = {
