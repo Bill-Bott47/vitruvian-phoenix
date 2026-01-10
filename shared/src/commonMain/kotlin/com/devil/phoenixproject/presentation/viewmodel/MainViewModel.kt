@@ -1208,6 +1208,25 @@ class MainViewModel constructor(
         }
     }
 
+    // ========== Simulator Mode (Easter Egg) ==========
+
+    fun unlockSimulatorMode() {
+        viewModelScope.launch {
+            preferencesManager.setSimulatorModeUnlocked(true)
+            Logger.i { "SIMULATOR MODE UNLOCKED!" }
+        }
+    }
+
+    fun toggleSimulatorMode(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setSimulatorModeUnlocked(enabled)
+        }
+    }
+
+    fun isSimulatorModeUnlocked(): Boolean {
+        return preferencesManager.isSimulatorModeUnlocked()
+    }
+
     fun deleteAllWorkouts() {
         viewModelScope.launch { workoutRepository.deleteAllSessions() }
     }

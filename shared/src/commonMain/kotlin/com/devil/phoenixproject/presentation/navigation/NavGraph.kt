@@ -318,7 +318,12 @@ fun NavGraph(
                 onDiscoModeUnlocked = { viewModel.unlockDiscoMode() },
                 onDiscoModeToggle = { viewModel.toggleDiscoMode(it) },
                 onPlayDiscoSound = { viewModel.emitDiscoSound() },
-                onTestSounds = { viewModel.testSounds() }
+                onTestSounds = { viewModel.testSounds() },
+                // Simulator mode Easter egg
+                simulatorModeUnlocked = viewModel.isSimulatorModeUnlocked(),
+                simulatorModeEnabled = viewModel.isSimulatorModeUnlocked(),
+                onSimulatorModeUnlocked = { viewModel.unlockSimulatorMode() },
+                onSimulatorModeToggle = { viewModel.toggleSimulatorMode(it) }
             )
         }
 
