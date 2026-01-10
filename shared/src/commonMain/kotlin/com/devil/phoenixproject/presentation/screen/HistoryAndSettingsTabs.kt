@@ -2141,6 +2141,11 @@ fun SettingsTab(
                                     backupResult = "Error: ${error.message}"
                                     showResultDialog = true
                                 }
+                            } catch (e: Exception) {
+                                // Handle SQLite exceptions and other errors gracefully
+                                // instead of crashing the app
+                                backupResult = "Export failed: ${e.message ?: "Unknown database error"}"
+                                showResultDialog = true
                             } finally {
                                 backupInProgress = false
                             }

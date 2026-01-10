@@ -71,6 +71,17 @@ actual class DriverFactory {
         // Gamification tables (may be missing - no migration was ever added for them)
         ensureGamificationTablesExist(driver)
 
+        // Enable WAL mode for better concurrent read/write performance
+        // This prevents lock contention issues during export (read) while other
+        // operations might be writing. WAL allows readers and writers to proceed
+        // concurrently without blocking each other.
+        try {
+            driver.execute(null, "PRAGMA journal_mode = WAL", 0)
+            NSLog("iOS DB: WAL journal mode enabled")
+        } catch (e: Exception) {
+            NSLog("iOS DB: Warning - could not enable WAL mode: ${e.message}")
+        }
+
         // Now enable foreign keys for normal operation
         try {
             driver.execute(null, "PRAGMA foreign_keys = ON", 0)
