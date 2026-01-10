@@ -963,6 +963,11 @@ fun SettingsTab(
     onDiscoModeToggle: (Boolean) -> Unit = {},
     onPlayDiscoSound: () -> Unit = {},
     onTestSounds: () -> Unit = {},
+    // Simulator mode Easter egg
+    simulatorModeUnlocked: Boolean = false,
+    simulatorModeEnabled: Boolean = false,
+    onSimulatorModeUnlocked: () -> Unit = {},
+    onSimulatorModeToggle: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showDeleteAllDialog by remember { mutableStateOf(false) }
@@ -981,6 +986,11 @@ fun SettingsTab(
     var lastTapTime by remember { mutableStateOf(0L) }
     // Disco mode unlock celebration dialog
     var showDiscoUnlockDialog by remember { mutableStateOf(false) }
+    // Simulator mode unlock celebration dialog
+    var showSimulatorUnlockDialog by remember { mutableStateOf(false) }
+    // Separate easter egg tap counter for simulator mode
+    var simulatorEasterEggTapCount by remember { mutableStateOf(0) }
+    var simulatorLastTapTime by remember { mutableStateOf(0L) }
     // Optimistic UI state for immediate visual feedback
     var localWeightUnit by remember(weightUnit) { mutableStateOf(weightUnit) }
 
@@ -1897,25 +1907,49 @@ fun SettingsTab(
                     .fillMaxWidth()
                     .padding(Spacing.medium)
             ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Easter egg: tap the header 7 times rapidly to unlock simulator mode
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable {
+                    val currentTime = KmpUtils.currentTimeMillis()
+                    // Reset if more than 2 seconds since last tap
+                    if (currentTime - simulatorLastTapTime > 2000L) {
+                        simulatorEasterEggTapCount = 1
+                    } else {
+                        simulatorEasterEggTapCount++
+                    }
+                    simulatorLastTapTime = currentTime
+
+                    // Unlock simulator mode after 7 rapid taps
+                    if (simulatorEasterEggTapCount >= 7 && !simulatorModeUnlocked) {
+                        showSimulatorUnlockDialog = true
+                        onSimulatorModeUnlocked()
+                        simulatorEasterEggTapCount = 0
+                    }
+                }
+            ) {
                 Box(
                     modifier = Modifier
                         .size(48.dp) // Material 3 Expressive: Larger (was 40dp)
                         .shadow(8.dp, RoundedCornerShape(20.dp)) // Material 3 Expressive: More shadow, more rounded (was 16dp)
                         .background(
                             Brush.linearGradient(
-                                colors = listOf(Color(0xFFF59E0B), Color(0xFFEF4444))
+                                colors = if (simulatorModeUnlocked) {
+                                    listOf(Color(0xFF9333EA), Color(0xFF4F46E5)) // Purple gradient when unlocked
+                                } else {
+                                    listOf(Color(0xFFF59E0B), Color(0xFFEF4444))
+                                }
                             ),
                             RoundedCornerShape(20.dp) // Material 3 Expressive: More rounded (was 16dp)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Default.BugReport,
-                        contentDescription = "View connection logs",
+                        if (simulatorModeUnlocked) Icons.Default.Code else Icons.Default.BugReport,
+                        contentDescription = "Developer Tools",
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.size(24.dp) // Material 3 Expressive: Larger icon
-                    ) 
+                    )
                 }
                 Spacer(modifier = Modifier.width(Spacing.medium))
                 Text(
@@ -1990,6 +2024,54 @@ fun SettingsTab(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                // Simulator mode toggle (only visible when unlocked)
+                if (simulatorModeUnlocked) {
+                    Spacer(modifier = Modifier.height(Spacing.medium))
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = Spacing.small),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "🔧",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Spacer(modifier = Modifier.width(Spacing.small))
+                            Column {
+                                Text(
+                                    "BLE Simulator",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    "Use virtual machine for testing",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = simulatorModeEnabled,
+                            onCheckedChange = { onSimulatorModeToggle(it) }
+                        )
+                    }
+
+                    // Info text about restart
+                    Spacer(modifier = Modifier.height(Spacing.small))
+                    Text(
+                        if (simulatorModeEnabled) "Restart the app to connect to the virtual machine"
+                        else "Enable to use simulated BLE device instead of real hardware",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (simulatorModeEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
             }
         }
@@ -2114,6 +2196,42 @@ fun SettingsTab(
     if (showDiscoUnlockDialog) {
         DiscoModeUnlockDialog(
             onDismiss = { showDiscoUnlockDialog = false }
+        )
+    }
+
+    // Simulator Mode Unlock Dialog
+    if (showSimulatorUnlockDialog) {
+        AlertDialog(
+            onDismissRequest = { showSimulatorUnlockDialog = false },
+            title = {
+                Text(
+                    "🔧 Developer Tools Unlocked!",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    "You've unlocked BLE Simulator mode!\n\nEnable it in Developer Tools, then restart the app to connect to a virtual machine instead of real hardware.",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            shape = RoundedCornerShape(28.dp),
+            confirmButton = {
+                TextButton(
+                    onClick = { showSimulatorUnlockDialog = false },
+                    modifier = Modifier.height(56.dp),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Text(
+                        "Got it!",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         )
     }
 
