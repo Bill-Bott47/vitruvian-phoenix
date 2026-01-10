@@ -1338,6 +1338,25 @@ class MainViewModel constructor(
             Logger.d { "proceedFromSummary: routine=${routine?.name ?: "NULL"}, isJustLift=$isJustLift" }
             Logger.d { "  currentExerciseIndex=${_currentExerciseIndex.value}, currentSetIndex=${_currentSetIndex.value}" }
 
+            // Check if routine is complete (for routine mode, not Just Lift)
+            if (routine != null && !isJustLift) {
+                val currentExercise = routine.exercises.getOrNull(_currentExerciseIndex.value)
+                val isLastSetOfExercise = _currentSetIndex.value >= (currentExercise?.setReps?.size ?: 1) - 1
+                val isLastExercise = _currentExerciseIndex.value >= routine.exercises.size - 1
+
+                // Mark exercise as completed if this was the last set
+                if (isLastSetOfExercise) {
+                    _completedExercises.value = _completedExercises.value + _currentExerciseIndex.value
+                }
+
+                // If last set of last exercise, show completion screen
+                if (isLastSetOfExercise && isLastExercise) {
+                    Logger.d { "proceedFromSummary: Last set of last exercise - showing routine complete" }
+                    showRoutineComplete()
+                    return@launch
+                }
+            }
+
             // Check if there are more sets or exercises remaining
             val hasMoreSets = routine?.let {
                 val currentExercise = it.exercises.getOrNull(_currentExerciseIndex.value)
@@ -3520,6 +3539,22 @@ class MainViewModel constructor(
     }
 
     /**
+     * Start workout or enter SetReady based on autoplay preference.
+     * When autoplay is ON, starts the workout immediately.
+     * When autoplay is OFF, transitions to SetReady screen for manual control.
+     */
+    private fun startWorkoutOrSetReady() {
+        val autoplay = autoplayEnabled.value
+        if (autoplay) {
+            // Autoplay ON: start workout immediately
+            startWorkout(skipCountdown = true)
+        } else {
+            // Autoplay OFF: go to SetReady screen for manual control
+            enterSetReady(_currentExerciseIndex.value, _currentSetIndex.value)
+        }
+    }
+
+    /**
      * Progress to the next set or exercise in a routine.
      * Handles superset progression: cycles through superset exercises before advancing sets.
      */
@@ -3582,7 +3617,7 @@ class MainViewModel constructor(
 
                         repCounter.resetCountsOnly()
                         resetAutoStopState()
-                        startWorkout(skipCountdown = true)
+                        startWorkoutOrSetReady()
                         return
                     }
                 } else {
@@ -3606,7 +3641,7 @@ class MainViewModel constructor(
 
                     repCounter.resetCountsOnly()
                     resetAutoStopState()
-                    startWorkout(skipCountdown = true)
+                    startWorkoutOrSetReady()
                     return
                 }
             }
@@ -3653,7 +3688,7 @@ class MainViewModel constructor(
 
                     repCounter.resetCountsOnly()
                     resetAutoStopState()
-                    startWorkout(skipCountdown = true)
+                    startWorkoutOrSetReady()
                     return
                 }
                 // No exercise found with sets at this index - fall through to complete superset
@@ -3686,7 +3721,7 @@ class MainViewModel constructor(
 
             repCounter.resetCountsOnly()
             resetAutoStopState()
-            startWorkout(skipCountdown = true)
+            startWorkoutOrSetReady()
         } else {
             // Move to next exercise (or find next after superset)
             val nextExerciseIndex = findNextExerciseAfterCurrent()
@@ -3715,7 +3750,7 @@ class MainViewModel constructor(
 
                 repCounter.reset()
                 resetAutoStopState()
-                startWorkout(skipCountdown = true)
+                startWorkoutOrSetReady()
             } else {
                 // Routine complete
                 _workoutState.value = WorkoutState.Completed
