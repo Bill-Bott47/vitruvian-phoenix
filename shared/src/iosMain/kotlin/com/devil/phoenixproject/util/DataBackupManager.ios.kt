@@ -7,9 +7,12 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import platform.Foundation.*
+import platform.darwin.NSObject
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIWindowScene
+import platform.UIKit.UIDevice
+import platform.UIKit.UIUserInterfaceIdiomPad
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 
@@ -141,6 +144,14 @@ class IosDataBackupManager(
                 activityItems = listOf(fileURL),
                 applicationActivities = null
             )
+
+            // Configure popover for iPad - required to prevent crash
+            // Access popoverPresentationController via ObjC KVC since K/N bindings don't expose it directly
+            if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+                activityVC.valueForKey("popoverPresentationController")?.let { popover ->
+                    (popover as? NSObject)?.setValue(rootViewController.view, forKey = "sourceView")
+                }
+            }
 
             rootViewController.presentViewController(
                 activityVC,
