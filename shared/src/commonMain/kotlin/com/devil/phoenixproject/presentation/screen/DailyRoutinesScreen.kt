@@ -41,6 +41,9 @@ fun DailyRoutinesScreen(
     var showResumeDialog by remember { mutableStateOf(false) }
     var pendingRoutine by remember { mutableStateOf<Routine?>(null) }
 
+    // Issue #130: Block routine editing during active workout
+    var showWorkoutActiveDialog by remember { mutableStateOf(false) }
+
     // Set global title
     LaunchedEffect(Unit) {
         viewModel.updateTopBarTitle("Daily Routines")
@@ -78,11 +81,21 @@ fun DailyRoutinesScreen(
             onDeleteRoutine = { routineId -> viewModel.deleteRoutine(routineId) },
             onDeleteRoutines = { routineIds -> viewModel.deleteRoutines(routineIds) },
             onSaveRoutine = { routine -> viewModel.saveRoutine(routine) },
-            onEditRoutine = { routineId -> 
-                navController.navigate(NavigationRoutes.RoutineEditor.createRoute(routineId)) 
+            onEditRoutine = { routineId ->
+                // Issue #130: Block editing during active workout
+                if (viewModel.isWorkoutActive) {
+                    showWorkoutActiveDialog = true
+                } else {
+                    navController.navigate(NavigationRoutes.RoutineEditor.createRoute(routineId))
+                }
             },
             onCreateRoutine = {
-                navController.navigate(NavigationRoutes.RoutineEditor.createRoute("new")) 
+                // Issue #130: Block creating during active workout
+                if (viewModel.isWorkoutActive) {
+                    showWorkoutActiveDialog = true
+                } else {
+                    navController.navigate(NavigationRoutes.RoutineEditor.createRoute("new"))
+                }
             },
             themeMode = themeMode,
             modifier = Modifier.fillMaxSize()
@@ -122,6 +135,20 @@ fun DailyRoutinesScreen(
                     onDismiss = { showResumeDialog = false }
                 )
             }
+        }
+
+        // Issue #130: Workout Active Dialog - blocks routine editing during workout
+        if (showWorkoutActiveDialog) {
+            AlertDialog(
+                onDismissRequest = { showWorkoutActiveDialog = false },
+                title = { Text("Workout in Progress") },
+                text = { Text("Please stop the current workout before editing routines.") },
+                confirmButton = {
+                    TextButton(onClick = { showWorkoutActiveDialog = false }) {
+                        Text("OK")
+                    }
+                }
+            )
         }
     }
 }

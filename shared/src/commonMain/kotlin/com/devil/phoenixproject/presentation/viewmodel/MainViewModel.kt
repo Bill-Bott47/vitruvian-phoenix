@@ -121,6 +121,17 @@ class MainViewModel constructor(
     private val _workoutState = MutableStateFlow<WorkoutState>(WorkoutState.Idle)
     val workoutState: StateFlow<WorkoutState> = _workoutState.asStateFlow()
 
+    /**
+     * Returns true if a workout is currently in progress (not idle or completed).
+     * Use this to prevent actions that shouldn't happen during active workouts,
+     * such as editing routines (Issue #130).
+     */
+    val isWorkoutActive: Boolean
+        get() {
+            val state = _workoutState.value
+            return state !is WorkoutState.Idle && state !is WorkoutState.Completed
+        }
+
     private val _routineFlowState = MutableStateFlow<RoutineFlowState>(RoutineFlowState.NotInRoutine)
     val routineFlowState: StateFlow<RoutineFlowState> = _routineFlowState.asStateFlow()
 
@@ -3119,14 +3130,11 @@ class MainViewModel constructor(
                     startRestTimer()
                 }
             } else {
-                // Routine/Program mode: Start rest timer
-                delay(2000) // Brief summary display
-
-                if (_workoutState.value is WorkoutState.SetSummary) {
-                    repCounter.resetCountsOnly()
-                    resetAutoStopState()
-                    startRestTimer()
-                }
+                // Routine/Program mode: Let UI countdown handle progression
+                // Issue #139: Removed hardcoded delay(2000) that raced with UI's summaryCountdownSeconds
+                // The SetSummaryCard's countdown calls proceedFromSummary() when complete,
+                // or user can tap the button manually. This respects user's countdown preference.
+                Logger.d("Routine mode: Waiting for UI countdown or user action to proceed from summary")
             }
         }
     }
