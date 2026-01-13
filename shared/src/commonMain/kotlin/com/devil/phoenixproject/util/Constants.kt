@@ -7,6 +7,10 @@ object Constants {
     // App version
     const val APP_VERSION = "0.3.1"
 
+    // EULA version - increment when EULA text changes materially
+    // Users must re-accept when this version increases
+    const val EULA_VERSION = 1
+
     // Weight limits (in kg)
     const val MIN_WEIGHT_KG = 0f
     const val MAX_WEIGHT_KG = 220f

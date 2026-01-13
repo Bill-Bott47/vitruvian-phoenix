@@ -385,18 +385,27 @@ fun WorkoutTab(
                         }
                     }
 
-                    SetSummaryCard(
-                        summary = workoutState,
-                        workoutMode = workoutParameters.programMode.displayName,
-                        weightUnit = weightUnit,
-                        kgToDisplay = kgToDisplay,
-                        formatWeight = formatWeight,
-                        onContinue = onProceedFromSummary,
-                        autoplayEnabled = autoplayEnabled,
-                        summaryCountdownSeconds = summaryCountdownSeconds,
-                        onRpeLogged = onRpeLogged,
-                        buttonLabel = buttonLabel
-                    )
+                    // Full-screen wrapper with proper system bar padding
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(screenBackgroundBrush())
+                            .systemBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        SetSummaryCard(
+                            summary = workoutState,
+                            workoutMode = workoutParameters.programMode.displayName,
+                            weightUnit = weightUnit,
+                            kgToDisplay = kgToDisplay,
+                            formatWeight = formatWeight,
+                            onContinue = onProceedFromSummary,
+                            autoplayEnabled = autoplayEnabled,
+                            summaryCountdownSeconds = summaryCountdownSeconds,
+                            onRpeLogged = onRpeLogged,
+                            buttonLabel = buttonLabel
+                        )
+                    }
                 }
                 is WorkoutState.Resting -> {
                     RestTimerCard(

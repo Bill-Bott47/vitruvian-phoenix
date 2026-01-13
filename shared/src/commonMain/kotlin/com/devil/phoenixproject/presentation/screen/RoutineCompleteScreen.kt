@@ -72,7 +72,8 @@ fun RoutineCompleteScreen(
                         MaterialTheme.colorScheme.background
                     )
                 )
-            ),
+            )
+            .systemBarsPadding(),
         contentAlignment = Alignment.Center
     ) {
         Column(
