@@ -1839,6 +1839,7 @@ class MainViewModel constructor(
         Logger.d { "  First set weight: ${firstSetWeight}kg, reps: $firstSetReps" }
         Logger.d { "  Program mode: ${firstExercise.programMode.displayName}" }
         Logger.d { "  Duration-based: $isDurationBased (duration=${firstExercise.duration})" }
+        Logger.d { "  Issue #164: progressionKg=${firstExercise.progressionKg}kg" }
 
         val params = WorkoutParameters(
             programMode = firstExercise.programMode,
@@ -1857,6 +1858,7 @@ class MainViewModel constructor(
         )
 
         Logger.d { "Created WorkoutParameters: isAMRAP=${params.isAMRAP}, isJustLift=${params.isJustLift}, stallDetection=${params.stallDetectionEnabled}" }
+        Logger.d { "  Issue #164: progressionRegressionKg=${params.progressionRegressionKg}kg" }
         updateWorkoutParameters(params)
     }
 
@@ -3941,6 +3943,7 @@ class MainViewModel constructor(
                 isAMRAP = nextSetReps == null,
                 stallDetectionEnabled = nextExercise.stallDetectionEnabled
             )
+            Logger.d { "startNextSetOrExercise: Issue #164: progressionKg=${nextExercise.progressionKg}kg for ${nextExercise.exercise.displayName}" }
 
             // Use full reset when changing exercises, counts-only reset for same exercise
             if (isChangingExercise) {
