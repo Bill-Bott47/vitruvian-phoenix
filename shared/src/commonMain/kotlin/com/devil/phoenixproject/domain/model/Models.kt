@@ -244,6 +244,15 @@ data class WorkoutMetric(
 }
 
 /**
+ * Movement phase during a rep - used for animated rep counter display
+ */
+enum class RepPhase {
+    IDLE,       // Between reps, not actively moving
+    CONCENTRIC, // Lifting (moving to top of ROM)
+    ECCENTRIC   // Lowering (moving to bottom of ROM)
+}
+
+/**
  * Rep count tracking
  */
 data class RepCount(
@@ -252,7 +261,10 @@ data class RepCount(
     val totalReps: Int = workingReps,  // Exclude warm-up reps from total count
     val isWarmupComplete: Boolean = false,
     val hasPendingRep: Boolean = false,  // True when at TOP (concentric peak), waiting for eccentric
-    val pendingRepProgress: Float = 0f   // 0.0 at TOP, 1.0 at BOTTOM (fill progress)
+    val pendingRepProgress: Float = 0f,  // 0.0 at TOP, 1.0 at BOTTOM (fill progress)
+    // Animation fields for Issue #163 animated rep counter
+    val activeRepPhase: RepPhase = RepPhase.IDLE,
+    val phaseProgress: Float = 0f  // 0.0 at start of phase, 1.0 at end (for animation)
 )
 
 /**

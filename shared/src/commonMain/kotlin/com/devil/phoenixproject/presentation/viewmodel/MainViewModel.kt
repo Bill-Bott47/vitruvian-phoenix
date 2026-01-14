@@ -467,6 +467,15 @@ class MainViewModel constructor(
                      RepType.WORKOUT_COMPLETE -> _hapticEvents.emit(HapticEvent.WORKOUT_COMPLETE)
                      else -> {}
                  }
+
+                 // Issue #159: Check if workout should stop (matching parent repo behavior)
+                 // This triggers auto-stop when target reps are reached, preventing the
+                 // race condition where handleMonitorMetric might not see shouldStopWorkout()
+                 // in time. This particularly affected single-cable exercises.
+                 if (repCounter.shouldStopWorkout()) {
+                     Logger.d("Rep event indicates workout should stop - requesting auto-stop")
+                     requestAutoStop()
+                 }
              }
         }
 
@@ -697,6 +706,11 @@ class MainViewModel constructor(
                 repCounter.updatePositionRangesContinuously(metric.positionA, metric.positionB)
             }
 
+            // Issue #163: Update phase tracking for animated rep counter
+            // This detects CONCENTRIC/ECCENTRIC phase and calculates progress for animation
+            repCounter.updatePhaseFromPosition(metric.positionA, metric.positionB)
+            _repCount.value = repCounter.getRepCount()
+
             // Update rep ranges for position bar ROM visualization
             _repRanges.value = repCounter.getRepRanges()
 
@@ -760,7 +774,24 @@ class MainViewModel constructor(
     }
 
     fun updateWorkoutParameters(params: WorkoutParameters) {
+        val oldWeight = _workoutParameters.value.weightPerCableKg
+        val newWeight = params.weightPerCableKg
+
         _workoutParameters.value = params
+
+        // Issue #160: Track weight changes made during rest/idle so they're preserved.
+        // Note: Weight changes during Active state are NOT allowed (machine will fault).
+        // The weight will be sent to the machine when startWorkout() is called next.
+        if (oldWeight != newWeight) {
+            val currentState = _workoutState.value
+            // Track user adjustment during rest (Issue #108) or any non-active state (Issue #160)
+            if (currentState is WorkoutState.Resting ||
+                currentState is WorkoutState.Idle ||
+                currentState is WorkoutState.SetSummary) {
+                _userAdjustedWeightDuringRest = true
+                Logger.d("MainViewModel: User adjusted weight to $newWeight kg (state=$currentState) - will preserve on next set")
+            }
+        }
     }
 
     fun startWorkout(skipCountdown: Boolean = false, isJustLiftMode: Boolean = false) {
@@ -1666,6 +1697,10 @@ class MainViewModel constructor(
         Logger.d { "  First set weight: ${firstSetWeight}kg, reps: $firstSetReps" }
         Logger.d { "  Program mode: ${firstExercise.programMode.displayName}" }
         Logger.d { "  Duration-based: $isDurationBased (duration=${firstExercise.duration})" }
+        // Issue #161: Log all exercise modes for debugging mode switching issues
+        routine.exercises.forEachIndexed { index, exercise ->
+            Logger.d { "Issue #161: Exercise[$index] '${exercise.exercise.name}' mode=${exercise.programMode}" }
+        }
 
         val params = WorkoutParameters(
             programMode = firstExercise.programMode,
@@ -3450,8 +3485,11 @@ class MainViewModel constructor(
         }
 
         // Normal (non-superset) progression
+        // Issue #161: Log which branch we're taking for debugging
+        Logger.d { "Issue #161: setIndex=${_currentSetIndex.value}, setReps.size=${currentExercise.setReps.size}, isSuperset=${isInSuperset()}" }
         if (_currentSetIndex.value < currentExercise.setReps.size - 1 && !isInSuperset()) {
             // More sets in current exercise (non-superset)
+            Logger.d { "Issue #161: Taking 'more sets in current exercise' branch - mode will NOT change" }
             _currentSetIndex.value++
             val targetReps = currentExercise.setReps[_currentSetIndex.value]
 
@@ -3480,6 +3518,11 @@ class MainViewModel constructor(
             val nextExerciseIndex = findNextExerciseAfterCurrent()
 
             if (nextExerciseIndex != null && nextExerciseIndex < routine.exercises.size) {
+                // Issue #161: Log mode transition for debugging
+                val prevMode = _workoutParameters.value.programMode
+                Logger.d("Issue #161: Moving from exercise ${_currentExerciseIndex.value} to $nextExerciseIndex")
+                Logger.d("Issue #161: Current params mode: $prevMode")
+
                 _currentExerciseIndex.value = nextExerciseIndex
                 _currentSetIndex.value = 0
                 _userAdjustedWeightDuringRest = false // Issue #108: Reset flag when changing exercises
@@ -3488,6 +3531,9 @@ class MainViewModel constructor(
                 val nextSetReps = nextExercise.setReps.getOrNull(0)
                 val nextSetWeight = nextExercise.setWeightsPerCableKg.getOrNull(0)
                     ?: nextExercise.weightPerCableKg
+
+                // Issue #161: Log the mode from the routine exercise
+                Logger.d("Issue #161: Next exercise '${nextExercise.exercise.name}' has mode: ${nextExercise.programMode}")
 
                 _workoutParameters.value = _workoutParameters.value.copy(
                     weightPerCableKg = nextSetWeight,
@@ -3500,6 +3546,9 @@ class MainViewModel constructor(
                     isAMRAP = nextSetReps == null,
                     stallDetectionEnabled = nextExercise.stallDetectionEnabled
                 )
+
+                // Issue #161: Verify mode was applied correctly
+                Logger.d("Issue #161: After update, params mode is: ${_workoutParameters.value.programMode}")
 
                 repCounter.reset()
                 resetAutoStopState()

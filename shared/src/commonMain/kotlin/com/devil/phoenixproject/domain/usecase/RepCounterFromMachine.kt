@@ -3,6 +3,7 @@ package com.devil.phoenixproject.domain.usecase
 import co.touchlab.kermit.Logger
 import com.devil.phoenixproject.domain.model.RepCount
 import com.devil.phoenixproject.domain.model.RepEvent
+import com.devil.phoenixproject.domain.model.RepPhase
 import com.devil.phoenixproject.domain.model.RepType
 
 /**
@@ -31,9 +32,19 @@ class RepCounterFromMachine {
     private var shouldStop = false
     private var isAMRAP = false
 
-    // Pending rep state - true when at TOP, waiting for eccentric completion
+    // Pending rep state - true when at TOP, waiting for machine confirm
     private var hasPendingRep = false
-    private var pendingRepProgress = 0f  // 0.0 at TOP, 1.0 at BOTTOM
+    private var pendingRepProgress = 0f  // 0.0 at TOP, 1.0 at BOTTOM (legacy, kept for compatibility)
+
+    // Issue #163: Phase tracking for animated rep counter
+    private var activePhase: RepPhase = RepPhase.IDLE
+    private var phaseProgress: Float = 0f  // 0.0 at phase start, 1.0 at phase end
+    private var lastTrackedPosition: Float = 0f  // For direction detection
+    private var phaseStartPosition: Float = 0f  // Position when phase started
+    private var phasePeakPosition: Float = 0f   // Peak position during current rep (for eccentric progress)
+    private var positionHistoryForDirection = mutableListOf<Float>()  // Rolling window for smoothing
+    private val DIRECTION_WINDOW_SIZE = 3
+    private val DIRECTION_THRESHOLD_MM = 5f  // Minimum movement to detect direction change (mm)
 
     // Track directional counters for position calibration AND visual feedback
     private var lastTopCounter: Int? = null
@@ -92,6 +103,13 @@ class RepCounterFromMachine {
         shouldStop = false
         hasPendingRep = false
         pendingRepProgress = 0f
+        // Issue #163: Reset phase tracking
+        activePhase = RepPhase.IDLE
+        phaseProgress = 0f
+        lastTrackedPosition = 0f
+        phaseStartPosition = 0f
+        phasePeakPosition = 0f
+        positionHistoryForDirection.clear()
         lastTopCounter = null
         lastCompleteCounter = null
         topPositionsA.clear()
@@ -126,6 +144,9 @@ class RepCounterFromMachine {
         shouldStop = false
         hasPendingRep = false
         pendingRepProgress = 0f
+        // Issue #163: Reset phase tracking (but keep position history for direction detection)
+        activePhase = RepPhase.IDLE
+        phaseProgress = 0f
         lastTopCounter = null
         lastCompleteCounter = null
         // NOTE: Do NOT clear position tracking lists or min/max ranges!
@@ -332,18 +353,14 @@ class RepCounterFromMachine {
             }
         }
 
-        // Track DOWN movement - for working reps, CONFIRM (colored) at BOTTOM
+        // Track DOWN movement - record position at BOTTOM
+        // Issue #163 FIX: Do NOT clear hasPendingRep here - wait for machine confirm
+        // This prevents the count from dropping back between BOTTOM and machine confirm
         if (lastCompleteCounter != null) {
             val downDelta = calculateDelta(lastCompleteCounter!!, down)
             if (downDelta > 0) {
                 recordBottomPosition(posA, posB)
-
-                // Clear pending state when we reach bottom
-                if (hasPendingRep) {
-                    hasPendingRep = false
-                    pendingRepProgress = 1f
-                    logDebug("📉 BOTTOM - pending cleared, waiting for machine confirm")
-                }
+                logDebug("📉 BOTTOM reached - waiting for machine confirm (hasPendingRep=$hasPendingRep)")
             }
         }
 
@@ -394,6 +411,13 @@ class RepCounterFromMachine {
                 )
             }
             workingReps = repsSetCount
+
+            // Issue #163 FIX: Clear pending state HERE when machine confirms the rep
+            // This ensures the count doesn't drop back between BOTTOM and confirm
+            hasPendingRep = false
+            activePhase = RepPhase.IDLE
+            phaseProgress = 0f
+
             logDebug("💪 WORKING_COMPLETED: rep $workingReps confirmed (colored)")
 
             onRepEvent?.invoke(
@@ -500,8 +524,107 @@ class RepCounterFromMachine {
             totalReps = total,
             isWarmupComplete = warmupReps >= warmupTarget,
             hasPendingRep = hasPendingRep,
-            pendingRepProgress = pendingRepProgress
+            pendingRepProgress = pendingRepProgress,
+            // Issue #163: Include phase tracking for animated counter
+            activeRepPhase = activePhase,
+            phaseProgress = phaseProgress
         )
+    }
+
+    /**
+     * Issue #163: Update phase and progress from continuous position data.
+     *
+     * Called from handleMonitorMetric() with current cable positions.
+     * Detects movement direction to determine CONCENTRIC vs ECCENTRIC phase,
+     * and calculates progress within the current phase for animation.
+     *
+     * @param posA Current position of cable A in mm
+     * @param posB Current position of cable B in mm
+     */
+    fun updatePhaseFromPosition(posA: Float, posB: Float) {
+        // Use the max of both positions for direction detection (handles single-cable exercises)
+        val currentPos = maxOf(posA, posB)
+        if (currentPos <= 0f) return
+
+        // Only track phase after warmup is complete (during working reps)
+        if (warmupReps < warmupTarget) {
+            activePhase = RepPhase.IDLE
+            phaseProgress = 0f
+            return
+        }
+
+        // Add to position history for smoothed direction detection
+        positionHistoryForDirection.add(currentPos)
+        if (positionHistoryForDirection.size > DIRECTION_WINDOW_SIZE) {
+            positionHistoryForDirection.removeAt(0)
+        }
+
+        // Need at least 2 positions to detect direction
+        if (positionHistoryForDirection.size < 2) {
+            lastTrackedPosition = currentPos
+            return
+        }
+
+        // Calculate smoothed direction from position history
+        val oldestPos = positionHistoryForDirection.first()
+        val newestPos = positionHistoryForDirection.last()
+        val positionDelta = newestPos - oldestPos
+
+        // Determine phase from direction
+        val newPhase = when {
+            positionDelta > DIRECTION_THRESHOLD_MM -> RepPhase.CONCENTRIC  // Moving up
+            positionDelta < -DIRECTION_THRESHOLD_MM -> RepPhase.ECCENTRIC  // Moving down
+            else -> activePhase  // No significant movement, keep current phase
+        }
+
+        // Handle phase transitions
+        if (newPhase != activePhase && newPhase != RepPhase.IDLE) {
+            when (newPhase) {
+                RepPhase.CONCENTRIC -> {
+                    // Starting concentric - record start position (bottom)
+                    phaseStartPosition = currentPos
+                    phasePeakPosition = currentPos
+                }
+                RepPhase.ECCENTRIC -> {
+                    // Starting eccentric - use current position as peak, keep start from concentric
+                    phasePeakPosition = currentPos
+                }
+                RepPhase.IDLE -> { /* No action needed */ }
+            }
+            activePhase = newPhase
+        }
+
+        // Calculate progress within phase (0.0 to 1.0)
+        when (activePhase) {
+            RepPhase.CONCENTRIC -> {
+                // Track peak position as we go up
+                if (currentPos > phasePeakPosition) {
+                    phasePeakPosition = currentPos
+                }
+                // Progress: 0.0 at bottom, 1.0 at top
+                val range = phasePeakPosition - phaseStartPosition
+                phaseProgress = if (range > 10f) {
+                    ((currentPos - phaseStartPosition) / range).coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+            }
+            RepPhase.ECCENTRIC -> {
+                // Progress: 0.0 at top, 1.0 at bottom
+                val minPos = minRepPosA ?: minRepPosB ?: phaseStartPosition
+                val range = phasePeakPosition - minPos
+                phaseProgress = if (range > 10f) {
+                    ((phasePeakPosition - currentPos) / range).coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+            }
+            RepPhase.IDLE -> {
+                phaseProgress = 0f
+            }
+        }
+
+        lastTrackedPosition = currentPos
     }
 
     fun shouldStopWorkout(): Boolean = shouldStop

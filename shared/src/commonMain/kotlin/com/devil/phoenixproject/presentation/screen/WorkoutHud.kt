@@ -21,8 +21,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devil.phoenixproject.data.repository.ExerciseRepository
 import com.devil.phoenixproject.domain.model.*
+import com.devil.phoenixproject.presentation.components.AnimatedRepCounter
 import com.devil.phoenixproject.presentation.components.CircularForceGauge
 import com.devil.phoenixproject.presentation.components.EnhancedCablePositionBar
+import com.devil.phoenixproject.presentation.components.StableRepProgress
 import com.devil.phoenixproject.presentation.util.ResponsiveDimensions
 import com.devil.phoenixproject.presentation.util.LocalWindowSizeClass
 import com.devil.phoenixproject.presentation.util.WindowWidthSizeClass
@@ -358,7 +360,9 @@ private fun ExecutionPage(
             Spacer(modifier = Modifier.height(24.dp))
         }
 
-        // Giant Rep Counter (matches parent repo style)
+        // Issue #163: Animated Rep Counter with stable progress display
+        // Shows phase label and animated counter during working reps
+        // Shows warmup counter during warmup phase
         Text(
             if (repCount.isWarmupComplete) "REP" else "WARMUP",
             style = MaterialTheme.typography.labelLarge,
@@ -366,26 +370,40 @@ private fun ExecutionPage(
             letterSpacing = 2.sp
         )
 
-        // Rep count display with pending state (grey when at TOP, colored when confirmed)
-        val countText = if (repCount.isWarmupComplete) {
-            if (repCount.hasPendingRep) {
-                (repCount.workingReps + 1).toString()
-            } else {
-                repCount.workingReps.toString()
+        if (repCount.isWarmupComplete) {
+            // Issue #163: Animated working rep counter
+            // Shows the current rep being performed with animated visual feedback:
+            // - IDLE: Solid confirmed count
+            // - CONCENTRIC: Outline reveals bottom-to-top
+            // - ECCENTRIC: Fill reveals top-to-bottom
+            AnimatedRepCounter(
+                nextRepNumber = repCount.workingReps + 1,
+                phase = repCount.activeRepPhase,
+                phaseProgress = repCount.phaseProgress,
+                confirmedReps = repCount.workingReps,
+                targetReps = workoutParameters.reps,
+                showStableCounter = false,  // We show it separately below
+                size = 120.dp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Stable "X / Y" progress display - always visible and stable
+            if (!workoutParameters.isJustLift && !workoutParameters.isAMRAP && workoutParameters.reps > 0) {
+                StableRepProgress(
+                    confirmedReps = repCount.workingReps,
+                    targetReps = workoutParameters.reps
+                )
             }
         } else {
-            "${repCount.warmupReps} / ${workoutParameters.warmupReps}"
+            // Warmup counter (non-animated)
+            Text(
+                text = "${repCount.warmupReps} / ${workoutParameters.warmupReps}",
+                style = MaterialTheme.typography.displayLarge.copy(fontSize = 120.sp),
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
-
-        Text(
-            text = countText,
-            style = MaterialTheme.typography.displayLarge.copy(fontSize = 120.sp),
-            fontWeight = FontWeight.Black,
-            color = if (repCount.hasPendingRep)
-                MaterialTheme.colorScheme.onSurface
-            else
-                MaterialTheme.colorScheme.primary
-        )
 
         Spacer(modifier = Modifier.height(32.dp))
 
