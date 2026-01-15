@@ -293,7 +293,14 @@ fun ActiveWorkoutScreen(
                         // This prevents stale SetSummary state from blocking editing after exit
                         viewModel.stopWorkout(exitingWorkout = true)
                         showExitConfirmation = false
-                        navController.navigateUp()
+
+                        // Smart navigation: if in routine flow, go back to DailyRoutines
+                        // to avoid blank RoutineOverviewScreen (which returns early when routine is null)
+                        if (routineFlowState != RoutineFlowState.NotInRoutine) {
+                            navController.popBackStack(NavigationRoutes.DailyRoutines.route, inclusive = false)
+                        } else {
+                            navController.navigateUp()
+                        }
                     }
                 ) {
                     Text("Exit")
