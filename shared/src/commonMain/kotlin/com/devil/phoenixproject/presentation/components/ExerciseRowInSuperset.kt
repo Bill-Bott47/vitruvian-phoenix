@@ -99,9 +99,37 @@ fun ExerciseRowInSuperset(
                 )
 
                 // Display format depends on whether this is a timed exercise
-                val exerciseText = if (exercise.duration != null) {
-                    // Duration-based exercise (bodyweight, timed holds, etc.)
+                // Check if bodyweight (equipment empty or "bodyweight") vs timed cable exercise
+                val isBodyweight = exercise.exercise.equipment.isEmpty() ||
+                    exercise.exercise.equipment.equals("bodyweight", ignoreCase = true)
+
+                val exerciseText = if (exercise.duration != null && isBodyweight) {
+                    // Bodyweight timed exercise (no cable weight needed)
                     "${exercise.sets} sets x ${exercise.duration}s"
+                } else if (exercise.duration != null) {
+                    // Timed cable exercise - show duration AND weight/progression
+                    val isEchoMode = exercise.programMode == ProgramMode.Echo
+                    val weightText = if (isEchoMode) {
+                        "Adaptive"
+                    } else {
+                        val weight = kgToDisplay(exercise.weightPerCableKg, weightUnit)
+                        val unitLabel = if (weightUnit == WeightUnit.KG) "kg" else "lbs"
+                        "${weight.toInt()} $unitLabel"
+                    }
+                    val progressionText = when {
+                        exercise.progressionKg > 0 -> {
+                            val progWeight = kgToDisplay(exercise.progressionKg, weightUnit)
+                            val unitLabel = if (weightUnit == WeightUnit.KG) "kg" else "lb"
+                            " (+${progWeight}$unitLabel)"
+                        }
+                        exercise.progressionKg < 0 -> {
+                            val regWeight = kgToDisplay(-exercise.progressionKg, weightUnit)
+                            val unitLabel = if (weightUnit == WeightUnit.KG) "kg" else "lb"
+                            " (-${regWeight}$unitLabel)"
+                        }
+                        else -> ""
+                    }
+                    "${exercise.sets} sets x ${exercise.duration}s @ $weightText$progressionText"
                 } else {
                     // Rep-based exercise with weight
                     val isEchoMode = exercise.programMode == ProgramMode.Echo
