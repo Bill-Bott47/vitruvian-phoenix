@@ -137,16 +137,24 @@ fun SupersetExerciseItem(
                         text = exercise.exercise.name,
                         style = MaterialTheme.typography.bodyLarge
                     )
-                    val isEchoMode = exercise.programMode == ProgramMode.Echo
-                    val weightText = if (isEchoMode) {
-                        "Adaptive"
+                    // Display format depends on whether this is a timed exercise
+                    val exerciseText = if (exercise.duration != null) {
+                        // Duration-based exercise (bodyweight, timed holds, etc.)
+                        "${exercise.sets} sets x ${exercise.duration}s"
                     } else {
-                        val weight = kgToDisplay(exercise.weightPerCableKg, weightUnit)
-                        val unitLabel = if (weightUnit == WeightUnit.KG) "kg" else "lbs"
-                        "${weight.toInt()} $unitLabel"
+                        // Rep-based exercise with weight
+                        val isEchoMode = exercise.programMode == ProgramMode.Echo
+                        val weightText = if (isEchoMode) {
+                            "Adaptive"
+                        } else {
+                            val weight = kgToDisplay(exercise.weightPerCableKg, weightUnit)
+                            val unitLabel = if (weightUnit == WeightUnit.KG) "kg" else "lbs"
+                            "${weight.toInt()} $unitLabel"
+                        }
+                        "${exercise.sets} sets x ${exercise.reps} reps @ $weightText"
                     }
                     Text(
-                        text = "${exercise.sets} sets x ${exercise.reps} reps @ $weightText",
+                        text = exerciseText,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

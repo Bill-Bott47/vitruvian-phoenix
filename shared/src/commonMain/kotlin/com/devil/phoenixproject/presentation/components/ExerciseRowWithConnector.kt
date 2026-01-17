@@ -152,16 +152,24 @@ fun ExerciseRowWithConnector(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    val isEchoMode = exercise.programMode == ProgramMode.Echo
-                    val weightText = if (isEchoMode) {
-                        "Adaptive"
+                    // Display format depends on whether this is a timed exercise
+                    val exerciseText = if (exercise.duration != null) {
+                        // Duration-based exercise (bodyweight, timed holds, etc.)
+                        "${exercise.sets} sets x ${exercise.duration}s"
                     } else {
-                        val weight = kgToDisplay(exercise.weightPerCableKg, weightUnit)
-                        val unitLabel = if (weightUnit == WeightUnit.KG) "kg" else "lbs"
-                        "${weight.toInt()} $unitLabel"
+                        // Rep-based exercise with weight
+                        val isEchoMode = exercise.programMode == ProgramMode.Echo
+                        val weightText = if (isEchoMode) {
+                            "Adaptive"
+                        } else {
+                            val weight = kgToDisplay(exercise.weightPerCableKg, weightUnit)
+                            val unitLabel = if (weightUnit == WeightUnit.KG) "kg" else "lbs"
+                            "${weight.toInt()} $unitLabel"
+                        }
+                        "${exercise.sets} sets x ${exercise.reps} reps @ $weightText"
                     }
                     Text(
-                        "${exercise.sets} sets x ${exercise.reps} reps @ $weightText",
+                        exerciseText,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
