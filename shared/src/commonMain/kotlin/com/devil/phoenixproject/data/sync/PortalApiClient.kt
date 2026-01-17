@@ -15,7 +15,7 @@ class PortalApiClient(
     private val tokenProvider: () -> String?
 ) {
     companion object {
-        const val DEFAULT_PORTAL_URL = "https://phoenix-portal-backend.railway.app"
+        const val DEFAULT_PORTAL_URL = "https://phoenix-portal-backend.up.railway.app"
     }
 
     private val json = Json {

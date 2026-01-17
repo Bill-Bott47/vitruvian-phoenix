@@ -49,11 +49,7 @@ val commonModule = module {
     single<CompletedSetRepository> { SqlDelightCompletedSetRepository(get()) }
     single<ProgressionRepository> { SqlDelightProgressionRepository(get()) }
 
-    // Auth & Subscription
-    single<AuthRepository> { SupabaseAuthRepository() }
-    single { SubscriptionManager(get()) }
-
-    // Portal Sync
+    // Portal Sync (must be before Auth since PortalAuthRepository depends on these)
     single { PortalTokenStorage(get()) }
     single {
         PortalApiClient(
@@ -63,6 +59,10 @@ val commonModule = module {
     single<SyncRepository> { SqlDelightSyncRepository(get()) }
     single { SyncManager(get(), get(), get()) }
     single { SyncTriggerManager(get(), get()) }
+
+    // Auth & Subscription (using Railway Portal backend)
+    single<AuthRepository> { PortalAuthRepository(get(), get()) }
+    single { SubscriptionManager(get()) }
 
     // Preferences
     // Settings is provided by platformModule

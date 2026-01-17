@@ -101,11 +101,6 @@ kotlin {
                 implementation(libs.compottie)
                 implementation(libs.compottie.resources)
 
-                // Supabase (Premium - Auth and Database)
-                implementation(project.dependencies.platform(libs.supabase.bom))
-                implementation(libs.supabase.auth)
-                implementation(libs.supabase.postgrest)
-
                 // RevenueCat (Premium - Subscriptions)
                 implementation(libs.revenuecat.purchases.core)
             }
