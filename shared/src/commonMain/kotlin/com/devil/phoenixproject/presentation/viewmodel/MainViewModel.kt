@@ -410,6 +410,7 @@ class MainViewModel constructor(
 
     private var currentSessionId: String? = null
     private var workoutStartTime: Long = 0
+    private var routineStartTime: Long = 0  // Issue #195: Track routine start separately from per-set start
     private val collectedMetrics = mutableListOf<WorkoutMetric>()
 
     private var currentRoutineSessionId: String? = null
@@ -909,6 +910,10 @@ class MainViewModel constructor(
                 // Start timer
                 _workoutState.value = WorkoutState.Active
                 workoutStartTime = currentTimeMillis()
+                // Issue #195: Track routine start separately - only set on first set
+                if (_loadedRoutine.value != null && routineStartTime == 0L) {
+                    routineStartTime = workoutStartTime
+                }
                 currentSessionId = KmpUtils.randomUUID()
                 collectedMetrics.clear()  // Clear metrics from previous workout
                 _hapticEvents.emit(HapticEvent.WORKOUT_START)
@@ -1046,6 +1051,10 @@ class MainViewModel constructor(
             // 7. Start Monitoring
             _workoutState.value = WorkoutState.Active
             workoutStartTime = currentTimeMillis()
+            // Issue #195: Track routine start separately - only set on first set
+            if (_loadedRoutine.value != null && routineStartTime == 0L) {
+                routineStartTime = workoutStartTime
+            }
             collectedMetrics.clear()  // Clear metrics from previous workout
             _hapticEvents.emit(HapticEvent.WORKOUT_START)
 
@@ -1214,6 +1223,7 @@ class MainViewModel constructor(
                  _workoutState.value = WorkoutState.Idle
                  _routineFlowState.value = RoutineFlowState.NotInRoutine
                  _loadedRoutine.value = null
+                 routineStartTime = 0  // Issue #195: Reset for next routine
              } else {
                  // Normal stop - show summary so user can see workout results
                  _workoutState.value = summary
@@ -2322,15 +2332,19 @@ class MainViewModel constructor(
         _routineFlowState.value = RoutineFlowState.NotInRoutine
         _loadedRoutine.value = null
         _workoutState.value = WorkoutState.Idle
+        routineStartTime = 0  // Issue #195: Reset for next routine
     }
 
     /**
      * Show routine complete screen.
+     * Issue #195: Use routineStartTime for accurate total duration across all sets.
      */
     fun showRoutineComplete() {
         val routine = _loadedRoutine.value ?: return
-        val duration = if (workoutStartTime > 0) {
-            currentTimeMillis() - workoutStartTime
+        // Issue #195: Use routineStartTime (set on first set) for total duration,
+        // not workoutStartTime (reset each set)
+        val duration = if (routineStartTime > 0) {
+            currentTimeMillis() - routineStartTime
         } else {
             0L
         }
@@ -2375,6 +2389,7 @@ class MainViewModel constructor(
     fun clearLoadedRoutine() {
         _loadedRoutine.value = null
         clearCycleContext()
+        routineStartTime = 0  // Issue #195: Reset for next routine
     }
 
     fun getCurrentExercise(): RoutineExercise? {
@@ -4035,6 +4050,7 @@ class MainViewModel constructor(
             // All sets complete
             _workoutState.value = WorkoutState.Completed
             _loadedRoutine.value = null
+            routineStartTime = 0  // Issue #195: Reset for next routine
             _currentSetIndex.value = 0
             _currentExerciseIndex.value = 0
             repCounter.reset()
