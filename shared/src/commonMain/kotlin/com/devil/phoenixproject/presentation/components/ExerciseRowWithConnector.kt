@@ -166,7 +166,23 @@ fun ExerciseRowWithConnector(
                             val unitLabel = if (weightUnit == WeightUnit.KG) "kg" else "lbs"
                             "${weight.toInt()} $unitLabel"
                         }
-                        "${exercise.sets} sets x ${exercise.reps} reps @ $weightText"
+                        // Handle AMRAP vs fixed reps display
+                        val repsText = if (exercise.isAMRAP) "AMRAP" else "${exercise.reps} reps"
+                        // Build progression/regression suffix if configured
+                        val progressionText = when {
+                            exercise.progressionKg > 0 -> {
+                                val progWeight = kgToDisplay(exercise.progressionKg, weightUnit)
+                                val unitLabel = if (weightUnit == WeightUnit.KG) "kg" else "lb"
+                                " (+${progWeight}$unitLabel/rep)"
+                            }
+                            exercise.progressionKg < 0 -> {
+                                val regWeight = kgToDisplay(-exercise.progressionKg, weightUnit)
+                                val unitLabel = if (weightUnit == WeightUnit.KG) "kg" else "lb"
+                                " (-${regWeight}$unitLabel/rep)"
+                            }
+                            else -> ""
+                        }
+                        "${exercise.sets} sets x $repsText @ $weightText$progressionText"
                     }
                     Text(
                         exerciseText,

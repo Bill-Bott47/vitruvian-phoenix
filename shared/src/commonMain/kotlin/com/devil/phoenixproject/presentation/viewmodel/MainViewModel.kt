@@ -920,6 +920,21 @@ class MainViewModel constructor(
 
             // Normal cable-based exercise
 
+            // Issue #188: Comprehensive workout parameters dump for debugging
+            Logger.d("WorkoutDebug") { "╔══════════════════════════════════════════════════════════════" }
+            Logger.d("WorkoutDebug") { "║ PRE-BLE WORKOUT PARAMETERS" }
+            Logger.d("WorkoutDebug") { "╠══════════════════════════════════════════════════════════════" }
+            Logger.d("WorkoutDebug") { "║ Mode: ${params.programMode.displayName}" }
+            Logger.d("WorkoutDebug") { "║ Weight: ${params.weightPerCableKg}kg per cable" }
+            Logger.d("WorkoutDebug") { "║ Reps: ${params.reps} (isAMRAP=${params.isAMRAP})" }
+            Logger.d("WorkoutDebug") { "║ Warmup: ${params.warmupReps}" }
+            Logger.d("WorkoutDebug") { "║ Progression: ${params.progressionRegressionKg}kg per rep" }
+            Logger.d("WorkoutDebug") { "║ isJustLift: ${params.isJustLift}" }
+            Logger.d("WorkoutDebug") { "║ isEchoMode: ${params.isEchoMode}" }
+            Logger.d("WorkoutDebug") { "║ stopAtTop: ${params.stopAtTop}" }
+            Logger.d("WorkoutDebug") { "║ stallDetection: ${params.stallDetectionEnabled}" }
+            Logger.d("WorkoutDebug") { "╚══════════════════════════════════════════════════════════════" }
+
             // 1. Build Command - Use full 96-byte PROGRAM params (matches parent repo)
             val command = if (params.isEchoMode) {
                 // 32-byte Echo control frame
