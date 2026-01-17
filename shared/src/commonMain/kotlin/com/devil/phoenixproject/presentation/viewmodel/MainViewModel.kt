@@ -921,19 +921,19 @@ class MainViewModel constructor(
             // Normal cable-based exercise
 
             // Issue #188: Comprehensive workout parameters dump for debugging
-            Logger.d("WorkoutDebug") { "╔══════════════════════════════════════════════════════════════" }
-            Logger.d("WorkoutDebug") { "║ PRE-BLE WORKOUT PARAMETERS" }
-            Logger.d("WorkoutDebug") { "╠══════════════════════════════════════════════════════════════" }
-            Logger.d("WorkoutDebug") { "║ Mode: ${params.programMode.displayName}" }
-            Logger.d("WorkoutDebug") { "║ Weight: ${params.weightPerCableKg}kg per cable" }
-            Logger.d("WorkoutDebug") { "║ Reps: ${params.reps} (isAMRAP=${params.isAMRAP})" }
-            Logger.d("WorkoutDebug") { "║ Warmup: ${params.warmupReps}" }
-            Logger.d("WorkoutDebug") { "║ Progression: ${params.progressionRegressionKg}kg per rep" }
-            Logger.d("WorkoutDebug") { "║ isJustLift: ${params.isJustLift}" }
-            Logger.d("WorkoutDebug") { "║ isEchoMode: ${params.isEchoMode}" }
-            Logger.d("WorkoutDebug") { "║ stopAtTop: ${params.stopAtTop}" }
-            Logger.d("WorkoutDebug") { "║ stallDetection: ${params.stallDetectionEnabled}" }
-            Logger.d("WorkoutDebug") { "╚══════════════════════════════════════════════════════════════" }
+            println("Issue188: ╔══════════════════════════════════════════════════════════════")
+            println("Issue188: ║ PRE-BLE WORKOUT PARAMETERS")
+            println("Issue188: ╠══════════════════════════════════════════════════════════════")
+            println("Issue188: ║ Mode: ${params.programMode.displayName}")
+            println("Issue188: ║ Weight: ${params.weightPerCableKg}kg per cable")
+            println("Issue188: ║ Reps: ${params.reps} (isAMRAP=${params.isAMRAP})")
+            println("Issue188: ║ Warmup: ${params.warmupReps}")
+            println("Issue188: ║ Progression: ${params.progressionRegressionKg}kg per rep")
+            println("Issue188: ║ isJustLift: ${params.isJustLift}")
+            println("Issue188: ║ isEchoMode: ${params.isEchoMode}")
+            println("Issue188: ║ stopAtTop: ${params.stopAtTop}")
+            println("Issue188: ║ stallDetection: ${params.stallDetectionEnabled}")
+            println("Issue188: ╚══════════════════════════════════════════════════════════════")
 
             // 1. Build Command - Use full 96-byte PROGRAM params (matches parent repo)
             val command = if (params.isEchoMode) {
@@ -1909,12 +1909,18 @@ class MainViewModel constructor(
         // Check if first exercise is duration-based (timed exercise)
         val isDurationBased = firstExercise.duration != null && firstExercise.duration > 0
 
-        Logger.d { "Loading routine: ${routine.name}" }
-        Logger.d { "  First exercise: ${firstExercise.exercise.displayName}" }
-        Logger.d { "  First set weight: ${firstSetWeight}kg, reps: $firstSetReps" }
-        Logger.d { "  Program mode: ${firstExercise.programMode.displayName}" }
-        Logger.d { "  Duration-based: $isDurationBased (duration=${firstExercise.duration})" }
-        Logger.d { "  Issue #164: progressionKg=${firstExercise.progressionKg}kg" }
+        // Issue #188: Trace routine loading with println for reliable logcat output
+        println("Issue188-Load: ╔══════════════════════════════════════════════════════════════")
+        println("Issue188-Load: ║ LOADING ROUTINE: ${routine.name}")
+        println("Issue188-Load: ╠══════════════════════════════════════════════════════════════")
+        println("Issue188-Load: ║ First exercise: ${firstExercise.exercise.displayName}")
+        println("Issue188-Load: ║ setReps list: ${firstExercise.setReps}")
+        println("Issue188-Load: ║ firstSetReps (firstOrNull): $firstSetReps")
+        println("Issue188-Load: ║ isAMRAP field on exercise: ${firstExercise.isAMRAP}")
+        println("Issue188-Load: ║ progressionKg: ${firstExercise.progressionKg}kg")
+        println("Issue188-Load: ║ weightPerCableKg: ${firstSetWeight}kg")
+        println("Issue188-Load: ║ programMode: ${firstExercise.programMode.displayName}")
+        println("Issue188-Load: ╚══════════════════════════════════════════════════════════════")
 
         val params = WorkoutParameters(
             programMode = firstExercise.programMode,
@@ -1932,8 +1938,11 @@ class MainViewModel constructor(
             stallDetectionEnabled = firstExercise.stallDetectionEnabled
         )
 
-        Logger.d { "Created WorkoutParameters: isAMRAP=${params.isAMRAP}, isJustLift=${params.isJustLift}, stallDetection=${params.stallDetectionEnabled}" }
-        Logger.d { "  Issue #164: progressionRegressionKg=${params.progressionRegressionKg}kg" }
+        // Issue #188: Log computed params
+        println("Issue188-Load: ║ COMPUTED WorkoutParameters:")
+        println("Issue188-Load: ║   isAMRAP=${params.isAMRAP} (from firstSetReps == null)")
+        println("Issue188-Load: ║   reps=${params.reps}")
+        println("Issue188-Load: ║   progressionRegressionKg=${params.progressionRegressionKg}kg")
         updateWorkoutParameters(params)
     }
 
@@ -2007,7 +2016,8 @@ class MainViewModel constructor(
             eccentricLoad = exercise.eccentricLoad,
             selectedExerciseId = exercise.exercise.id,
             stallDetectionEnabled = exercise.stallDetectionEnabled,
-            isAMRAP = isSetAmrap  // Issue #129: Set per-set AMRAP flag
+            isAMRAP = isSetAmrap,  // Issue #129: Set per-set AMRAP flag
+            progressionRegressionKg = exercise.progressionKg  // Issue #188: Include progression from exercise
         )
     }
 
@@ -2044,7 +2054,8 @@ class MainViewModel constructor(
             eccentricLoad = exercise.eccentricLoad,
             selectedExerciseId = exercise.exercise.id,
             stallDetectionEnabled = exercise.stallDetectionEnabled,
-            isAMRAP = isSetAmrap  // Issue #129: Set per-set AMRAP flag
+            isAMRAP = isSetAmrap,  // Issue #129: Set per-set AMRAP flag
+            progressionRegressionKg = exercise.progressionKg  // Issue #188: Include progression from exercise
         )
     }
 
@@ -4111,10 +4122,13 @@ class MainViewModel constructor(
             resetAutoStopState()
             startWorkoutOrSetReady()
         } else {
-            // Routine complete
-            Logger.d { "startNextSetOrExercise: No more steps - routine complete" }
-            _workoutState.value = WorkoutState.Completed
-            _loadedRoutine.value = null
+            // Routine complete - Issue #189: Show completion screen instead of going blank
+            // MUST call showRoutineComplete() BEFORE clearing _loadedRoutine, as it needs
+            // the routine data to populate the completion screen.
+            // exitRoutineFlow() will clear the routine state when user clicks "Done".
+            Logger.d { "startNextSetOrExercise: No more steps - showing routine complete" }
+            showRoutineComplete()
+            _workoutState.value = WorkoutState.Idle
             _currentSetIndex.value = 0
             _currentExerciseIndex.value = 0
             currentRoutineSessionId = null
