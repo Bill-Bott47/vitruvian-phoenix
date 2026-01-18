@@ -114,6 +114,12 @@ class MainViewModel constructor(
 
         /** Minimum position range to consider "meaningful" for auto-stop detection (in mm) */
         const val MIN_RANGE_THRESHOLD = 50f
+
+        /** Issue #204: Startup grace period for AMRAP exercises (ms)
+         * Prevents auto-stop from triggering before user has time to grab handles
+         * when transitioning from a normal rep-based exercise to an AMRAP exercise.
+         */
+        const val AMRAP_STARTUP_GRACE_MS = 8000L
     }
 
     val connectionState: StateFlow<ConnectionState> = bleRepository.connectionState
@@ -585,12 +591,19 @@ class MainViewModel constructor(
                 if ((params.isJustLift || params.isAMRAP) && currentState is WorkoutState.Active) {
                     Logger.d("🛑 DELOAD_OCCURRED: Machine detected cable release - starting auto-stop timer")
 
+                    // Issue #204: Don't start stall timer during AMRAP startup grace period
+                    // This prevents premature auto-stop when transitioning from target-rep to AMRAP exercise
+                    val hasMeaningfulRange = repCounter.hasMeaningfulRange(MIN_RANGE_THRESHOLD)
+                    val inGrace = isInAmrapStartupGrace(hasMeaningfulRange)
+
                     // Start the stall timer for velocity-based auto-stop countdown
                     // This uses the 5-second STALL_DURATION_SECONDS timer
-                    if (stallStartTime == null) {
+                    if (stallStartTime == null && !inGrace) {
                         stallStartTime = currentTimeMillis()
                         isCurrentlyStalled = true
                         Logger.d("🛑 Auto-stop stall timer STARTED via DELOAD_OCCURRED flag")
+                    } else if (inGrace) {
+                        Logger.d("🛑 DELOAD_OCCURRED ignored - in AMRAP startup grace period")
                     }
                 }
             }
@@ -773,7 +786,9 @@ class MainViewModel constructor(
             // Just Lift / AMRAP Auto-Stop
             // Always call checkAutoStop for position-based detection.
             // Stall (velocity) detection inside is gated by stallDetectionEnabled.
+            // Issue #203: Debug logging to track auto-stop check conditions
             if (params.isJustLift || params.isAMRAP) {
+                Logger.d { "Issue203 DEBUG: checkAutoStop called - isJustLift=${params.isJustLift}, isAMRAP=${params.isAMRAP}, setIndex=${_currentSetIndex.value}" }
                 checkAutoStop(metric)
             } else {
                 resetAutoStopTimer()
@@ -943,6 +958,8 @@ class MainViewModel constructor(
             println("Issue188: ║ Mode: ${params.programMode.displayName}")
             println("Issue188: ║ Weight: ${params.weightPerCableKg}kg per cable")
             println("Issue188: ║ Reps: ${params.reps} (isAMRAP=${params.isAMRAP})")
+            // Issue #203: Debug logging to track AMRAP flag through set transitions
+            Logger.d { "Issue203 DEBUG: Starting workout - setReps=${currentExercise?.setReps}, currentSetIndex=${_currentSetIndex.value}, isAMRAP=${params.isAMRAP}" }
             println("Issue188: ║ Warmup: ${params.warmupReps}")
             println("Issue188: ║ Progression: ${params.progressionRegressionKg}kg per rep")
             println("Issue188: ║ isJustLift: ${params.isJustLift}")
@@ -1567,6 +1584,10 @@ class MainViewModel constructor(
                     val nextSetWeight = nextExercise.setWeightsPerCableKg.getOrNull(nextSetIdx)
                         ?: nextExercise.weightPerCableKg
                     val nextSetReps = nextExercise.setReps.getOrNull(nextSetIdx)
+                    // Issue #203: Fallback to exercise-level isAMRAP flag for legacy ExerciseEditDialog compatibility
+                    // Legacy "Last set AMRAP" only applies when we're on the last set
+                    val isNextSetLastSet = nextSetIdx >= nextExercise.setReps.size - 1
+                    val nextIsAMRAP = nextSetReps == null || (nextExercise.isAMRAP && isNextSetLastSet)
 
                     _workoutParameters.value = _workoutParameters.value.copy(
                         weightPerCableKg = nextSetWeight,
@@ -1576,9 +1597,10 @@ class MainViewModel constructor(
                         eccentricLoad = nextExercise.eccentricLoad,
                         progressionRegressionKg = nextExercise.progressionKg,
                         selectedExerciseId = nextExercise.exercise.id,
-                        isAMRAP = nextSetReps == null,
+                        isAMRAP = nextIsAMRAP,
                         stallDetectionEnabled = nextExercise.stallDetectionEnabled
                     )
+                    Logger.d { "proceedFromSummary: Issue #203 - Updated params for next set: ${nextExercise.exercise.name}, setIdx=$nextSetIdx, isAMRAP=$nextIsAMRAP" }
 
                     // Reset counters for next set
                     repCounter.resetCountsOnly()
@@ -1734,11 +1756,18 @@ class MainViewModel constructor(
         // This matches official app behavior which requires explicit stop before mode transitions
         viewModelScope.launch {
             try {
-                // Send stop command to ensure machine is in BASELINE mode before mode transition
-                // This prevents BLE protocol conflicts when switching between workout modes (Echo <-> Old School)
+                // Issue #205: First clear any fault state with official StopPacket (0x50)
+                // This command clears blinking orange/red lights from mode transition faults
+                // The StopPacket is a "soft stop" that releases tension and clears fault states
+                bleRepository.sendStopCommand()
+                delay(100)  // Allow fault clear to process
+
+                // Then full reset with RESET command (0x0A) which also stops polling
+                // This ensures machine is in BASELINE mode before mode transition
                 bleRepository.stopWorkout()
-                delay(150)  // Brief settling time for machine to process stop command
-                Logger.d("MainViewModel") { "BLE stop sent before navigation to exercise $index" }
+                delay(150)  // Settling time for machine to process
+
+                Logger.d("MainViewModel") { "BLE stop sequence sent before navigation to exercise $index" }
             } catch (e: Exception) {
                 Logger.w(e) { "Stop command before navigation failed (non-fatal): ${e.message}" }
                 // Continue anyway - the stop may have succeeded partially
@@ -1954,6 +1983,11 @@ class MainViewModel constructor(
         println("Issue188-Load: ║ programMode: ${firstExercise.programMode.displayName}")
         println("Issue188-Load: ╚══════════════════════════════════════════════════════════════")
 
+        // Issue #203: Fallback to exercise-level isAMRAP flag for legacy ExerciseEditDialog compatibility
+        // Legacy "Last set AMRAP" only applies when we're on the last set (set index 0 for single-set exercises)
+        val isFirstSetLastSet = firstExercise.setReps.size <= 1
+        val firstIsAMRAP = firstSetReps == null || (firstExercise.isAMRAP && isFirstSetLastSet)
+
         val params = WorkoutParameters(
             programMode = firstExercise.programMode,
             echoLevel = firstExercise.echoLevel,
@@ -1965,14 +1999,14 @@ class MainViewModel constructor(
             useAutoStart = false,
             stopAtTop = stopAtTop.value,
             warmupReps = if (isDurationBased) 0 else _workoutParameters.value.warmupReps,
-            isAMRAP = firstSetReps == null, // This SET is AMRAP if its reps is null
+            isAMRAP = firstIsAMRAP, // Issue #203: Check both per-set (null reps) and exercise-level flag
             selectedExerciseId = firstExercise.exercise.id,
             stallDetectionEnabled = firstExercise.stallDetectionEnabled
         )
 
         // Issue #188: Log computed params
         println("Issue188-Load: ║ COMPUTED WorkoutParameters:")
-        println("Issue188-Load: ║   isAMRAP=${params.isAMRAP} (from firstSetReps == null)")
+        println("Issue188-Load: ║   isAMRAP=${params.isAMRAP} (from firstSetReps == null || exercise.isAMRAP)")
         println("Issue188-Load: ║   reps=${params.reps}")
         println("Issue188-Load: ║   progressionRegressionKg=${params.progressionRegressionKg}kg")
         updateWorkoutParameters(params)
@@ -3006,7 +3040,9 @@ class MainViewModel constructor(
             // - Hysteresis band (LOW to HIGH): maintain current state, keep timer running if active
             // Issue #198: Also start timer if handles are at rest (dropped entirely) - this catches
             // the edge case where position drops below 10mm AND no meaningful range was established
-            if (isDefinitelyStalled && (isActivelyUsing || handlesAtRest) && stallStartTime == null) {
+            // Issue #204: Don't start stall timer during AMRAP startup grace period
+            val inGrace = isInAmrapStartupGrace(hasMeaningfulRange)
+            if (isDefinitelyStalled && (isActivelyUsing || handlesAtRest) && stallStartTime == null && !inGrace) {
                 // Velocity below LOW threshold - start stall timer
                 stallStartTime = currentTimeMillis()
                 isCurrentlyStalled = true
@@ -3052,8 +3088,11 @@ class MainViewModel constructor(
         // If no meaningful range established, check if handles are completely at rest
         // This catches the edge case where user drops weights before establishing ROM
         if (!hasMeaningfulRange) {
-            if (handlesCompletelyAtRest) {
-                // Fallback: handles at rest with no range - start/continue timer
+            // Issue #204: Check grace period for position-based fallback
+            val inGraceForPositionCheck = isInAmrapStartupGrace(hasMeaningfulRange)
+
+            if (handlesCompletelyAtRest && !inGraceForPositionCheck) {
+                // Fallback: handles at rest with no range AND past grace period - start/continue timer
                 val startTime = autoStopStartTime ?: run {
                     autoStopStartTime = currentTimeMillis()
                     currentTimeMillis()
@@ -3079,7 +3118,7 @@ class MainViewModel constructor(
                 }
                 return
             } else {
-                // No meaningful range and handles not at rest - reset and wait
+                // Either user is moving OR in grace period - reset and wait
                 resetAutoStopTimer()
                 return
             }
@@ -3191,6 +3230,35 @@ class MainViewModel constructor(
         stallStartTime = null
         isCurrentlyStalled = false
         _autoStopState.value = AutoStopUiState()
+    }
+
+    /**
+     * Issue #204: Returns true if we're in the startup grace period for AMRAP exercises.
+     * Grace period prevents auto-stop from triggering before user has time to grab handles
+     * when transitioning from a normal rep-based exercise to an AMRAP exercise.
+     *
+     * Grace ends when:
+     * 1. 8 seconds have elapsed since workout start, OR
+     * 2. Meaningful ROM has been established (user has started exercising)
+     *
+     * Note: Only applies to AMRAP mode, not Just Lift (which has responsive auto-stop by design).
+     *
+     * @param hasMeaningfulRange Whether meaningful ROM (> 50mm) has been established
+     * @return True if in grace period and auto-stop should be suppressed
+     */
+    private fun isInAmrapStartupGrace(hasMeaningfulRange: Boolean): Boolean {
+        // Only AMRAP mode gets grace period (not Just Lift)
+        if (!_workoutParameters.value.isAMRAP) return false
+
+        // If meaningful range established, user has started exercising - no grace needed
+        if (hasMeaningfulRange) return false
+
+        // workoutStartTime == 0 means we're in the race window between Active state
+        // and workoutStartTime assignment - treat as "in grace" to be safe
+        if (workoutStartTime == 0L) return true
+
+        val elapsed = currentTimeMillis() - workoutStartTime
+        return elapsed < AMRAP_STARTUP_GRACE_MS
     }
 
     /**
@@ -3914,30 +3982,46 @@ class MainViewModel constructor(
                 null
             }
 
-            // Issue #170: Update workoutParameters with NEXT exercise settings when transitioning
-            // This ensures the rest screen shows the correct mode, weight, reps for the upcoming exercise
-            // instead of the just-completed exercise's parameters
-            if (nextExercise != null) {
-                val nextSetIdx = if (isInSupersetTransition) _currentSetIndex.value else 0
-                val nextSetReps = nextExercise.setReps.getOrNull(nextSetIdx)
-                val nextSetWeight = nextExercise.setWeightsPerCableKg.getOrNull(nextSetIdx)
-                    ?: nextExercise.weightPerCableKg
-                // Issue #196: Duration exercises should never have warmup reps
-                val nextIsDurationBased = nextExercise.duration != null && nextExercise.duration > 0
+            // Issue #170/#203: Update workoutParameters with NEXT exercise/set settings when transitioning
+            // This ensures the rest screen shows the correct mode, weight, reps for the upcoming set
+            // Issue #203: Handle SAME-EXERCISE set transitions (e.g., Set 1 → Set 2 within one exercise)
+            // Previously, params were only updated when transitioning to a DIFFERENT exercise (nextExercise != null)
+            // This caused isAMRAP to stay false for mixed routines (Target → AMRAP → AMRAP)
+            val exerciseForNextSet = nextExercise ?: currentExercise
+            if (exerciseForNextSet != null) {
+                val nextSetIdx = when {
+                    isInSupersetTransition -> _currentSetIndex.value
+                    isTransitioningToNextExercise -> 0
+                    else -> completedSetIndex + 1  // Same exercise, next set
+                }
 
-                _workoutParameters.value = _workoutParameters.value.copy(
-                    weightPerCableKg = nextSetWeight,
-                    reps = nextSetReps ?: 0,
-                    programMode = nextExercise.programMode,
-                    echoLevel = nextExercise.echoLevel,
-                    eccentricLoad = nextExercise.eccentricLoad,
-                    progressionRegressionKg = nextExercise.progressionKg,
-                    selectedExerciseId = nextExercise.exercise.id,
-                    isAMRAP = nextSetReps == null,
-                    stallDetectionEnabled = nextExercise.stallDetectionEnabled,
-                    warmupReps = if (nextIsDurationBased) 0 else _workoutParameters.value.warmupReps
-                )
-                Logger.d { "startRestTimer: Updated params for next exercise: ${nextExercise.exercise.name}, mode=${nextExercise.programMode}, isDuration=$nextIsDurationBased" }
+                // Guard: Only update if there IS a next set (not past the last set)
+                val hasNextSet = nextSetIdx < exerciseForNextSet.setReps.size
+                if (hasNextSet) {
+                    val nextSetReps = exerciseForNextSet.setReps.getOrNull(nextSetIdx)
+                    val nextSetWeight = exerciseForNextSet.setWeightsPerCableKg.getOrNull(nextSetIdx)
+                        ?: exerciseForNextSet.weightPerCableKg
+                    // Issue #196: Duration exercises should never have warmup reps
+                    val nextIsDurationBased = exerciseForNextSet.duration != null && exerciseForNextSet.duration > 0
+                    // Issue #203: Fallback to exercise-level isAMRAP flag for legacy ExerciseEditDialog compatibility
+                    // Legacy "Last set AMRAP" only applies when we're on the last set
+                    val isNextSetLastSet = nextSetIdx >= exerciseForNextSet.setReps.size - 1
+                    val nextIsAMRAP = nextSetReps == null || (exerciseForNextSet.isAMRAP && isNextSetLastSet)
+
+                    _workoutParameters.value = _workoutParameters.value.copy(
+                        weightPerCableKg = nextSetWeight,
+                        reps = nextSetReps ?: 0,
+                        programMode = exerciseForNextSet.programMode,
+                        echoLevel = exerciseForNextSet.echoLevel,
+                        eccentricLoad = exerciseForNextSet.eccentricLoad,
+                        progressionRegressionKg = exerciseForNextSet.progressionKg,
+                        selectedExerciseId = exerciseForNextSet.exercise.id,
+                        isAMRAP = nextIsAMRAP,
+                        stallDetectionEnabled = exerciseForNextSet.stallDetectionEnabled,
+                        warmupReps = if (nextIsDurationBased) 0 else _workoutParameters.value.warmupReps
+                    )
+                    Logger.d { "startRestTimer: Issue #203 - Updated params for next set: ${exerciseForNextSet.exercise.name}, setIdx=$nextSetIdx, isAMRAP=$nextIsAMRAP, nextSetReps=$nextSetReps" }
+                }
             }
 
             // Calculate display values for the rest timer
@@ -4083,13 +4167,19 @@ class MainViewModel constructor(
             }
             _userAdjustedWeightDuringRest = false // Reset flag after use
 
+            // Issue #203: Fallback to exercise-level isAMRAP flag for legacy ExerciseEditDialog compatibility
+            // Legacy "Last set AMRAP" only applies when we're on the last set
+            val isLastSet = _currentSetIndex.value >= currentExercise.setReps.size - 1
+            val nextIsAMRAP = targetReps == null || (currentExercise.isAMRAP && isLastSet)
+
             _workoutParameters.value = currentParams.copy(
                 reps = setReps,
                 weightPerCableKg = setWeight,
-                isAMRAP = targetReps == null,
+                isAMRAP = nextIsAMRAP,
                 stallDetectionEnabled = currentExercise.stallDetectionEnabled,
                 progressionRegressionKg = currentExercise.progressionKg  // Issue #110: Reset to prevent stale values
             )
+            Logger.d { "advanceToNextSetInSingleExercise: Issue #203 - setIdx=${_currentSetIndex.value}, isAMRAP=$nextIsAMRAP" }
 
             repCounter.resetCountsOnly()
             resetAutoStopState()
@@ -4201,6 +4291,11 @@ class MainViewModel constructor(
             // Issue #196: Duration exercises should never have warmup reps
             val nextIsDurationBased = nextExercise.duration != null && nextExercise.duration > 0
 
+            // Issue #203: Fallback to exercise-level isAMRAP flag for legacy ExerciseEditDialog compatibility
+            // Legacy "Last set AMRAP" only applies when we're on the last set
+            val isNextSetLastSet = nextSetIdx >= nextExercise.setReps.size - 1
+            val nextIsAMRAP = nextSetReps == null || (nextExercise.isAMRAP && isNextSetLastSet)
+
             _workoutParameters.value = currentParams.copy(
                 weightPerCableKg = nextSetWeight,
                 reps = nextReps,
@@ -4209,11 +4304,11 @@ class MainViewModel constructor(
                 eccentricLoad = nextEccentricLoad,
                 progressionRegressionKg = nextExercise.progressionKg,
                 selectedExerciseId = nextExercise.exercise.id,
-                isAMRAP = nextSetReps == null,
+                isAMRAP = nextIsAMRAP,
                 stallDetectionEnabled = nextExercise.stallDetectionEnabled,
                 warmupReps = if (nextIsDurationBased) 0 else currentParams.warmupReps
             )
-            Logger.d { "startNextSetOrExercise: Issue #164: progressionKg=${nextExercise.progressionKg}kg for ${nextExercise.exercise.displayName}, isDuration=$nextIsDurationBased" }
+            Logger.d { "startNextSetOrExercise: Issue #203 - progressionKg=${nextExercise.progressionKg}kg for ${nextExercise.exercise.displayName}, isDuration=$nextIsDurationBased, isAMRAP=$nextIsAMRAP" }
 
             // Use full reset when changing exercises, counts-only reset for same exercise
             if (isChangingExercise) {
