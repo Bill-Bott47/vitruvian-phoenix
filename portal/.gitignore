@@ -1,31 +1,27 @@
 # Dependencies
 node_modules/
-.pnpm-store/
 
-# Build outputs
-.next/
-out/
+# Build output
 dist/
-build/
-*.tsbuildinfo
+
+# Editor directories and files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # Environment
 .env
 .env.local
 .env.*.local
 
-# IDE
-.idea/
-*.iml
-.vscode/
-
-# Kotlin/Gradle
-.gradle/
-apps/backend/build/
-
-# Supabase
-.supabase/
-
-# OS
-.DS_Store
-Thumbs.db
+# Logs
+*.log
+npm-debug.log*
