@@ -377,78 +377,79 @@ actual class DriverFactory {
 
     /**
      * Create all tables using IF NOT EXISTS for idempotency.
+     * CRITICAL: These table definitions MUST exactly match VitruvianDatabase.sq
+     * Any mismatch will cause SQLDelight queries to fail with missing column errors.
      */
     private fun createAllTables(driver: SqlDriver) {
         val tables = listOf(
-            // Core tables
+            // ==================== Exercise Library ====================
+            // Must match VitruvianDatabase.sq exactly
             """
             CREATE TABLE IF NOT EXISTS Exercise (
-                id TEXT PRIMARY KEY NOT NULL,
+                id TEXT NOT NULL PRIMARY KEY,
                 name TEXT NOT NULL,
+                description TEXT,
+                created INTEGER NOT NULL DEFAULT 0,
                 muscleGroup TEXT NOT NULL,
+                muscleGroups TEXT NOT NULL,
+                muscles TEXT,
+                equipment TEXT NOT NULL,
+                movement TEXT,
+                sidedness TEXT,
+                grip TEXT,
+                gripWidth TEXT,
+                minRepRange REAL,
+                popularity REAL NOT NULL DEFAULT 0,
+                archived INTEGER NOT NULL DEFAULT 0,
                 isFavorite INTEGER NOT NULL DEFAULT 0,
-                last_used_at INTEGER,
-                notes TEXT,
-                one_rep_max_kg REAL,
+                isCustom INTEGER NOT NULL DEFAULT 0,
+                timesPerformed INTEGER NOT NULL DEFAULT 0,
+                lastPerformed INTEGER,
+                aliases TEXT,
+                defaultCableConfig TEXT NOT NULL,
+                one_rep_max_kg REAL DEFAULT NULL,
                 updatedAt INTEGER,
                 serverId TEXT,
                 deletedAt INTEGER
             )
             """,
+            // Exercise Videos
             """
-            CREATE TABLE IF NOT EXISTS Routine (
-                id TEXT PRIMARY KEY NOT NULL,
-                name TEXT NOT NULL,
-                colorIndex INTEGER NOT NULL DEFAULT 0,
-                isFavorite INTEGER NOT NULL DEFAULT 0,
-                created_at INTEGER NOT NULL,
-                last_used_at INTEGER,
-                updatedAt INTEGER,
-                serverId TEXT,
-                deletedAt INTEGER
-            )
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS RoutineExercise (
-                id TEXT PRIMARY KEY NOT NULL,
-                routineId TEXT NOT NULL,
+            CREATE TABLE IF NOT EXISTS ExerciseVideo (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 exerciseId TEXT NOT NULL,
-                orderIndex INTEGER NOT NULL,
-                sets INTEGER NOT NULL DEFAULT 3,
-                reps INTEGER NOT NULL DEFAULT 10,
-                weightKg REAL NOT NULL DEFAULT 20.0,
-                restSeconds INTEGER NOT NULL DEFAULT 60,
-                echoLevel TEXT NOT NULL DEFAULT 'OFF',
-                eccentricLoadPercent INTEGER,
-                supersetId TEXT,
-                orderInSuperset INTEGER NOT NULL DEFAULT 0,
-                usePercentOfPR INTEGER NOT NULL DEFAULT 0,
-                weightPercentOfPR INTEGER NOT NULL DEFAULT 80,
-                prTypeForScaling TEXT NOT NULL DEFAULT 'MAX_WEIGHT',
-                setWeightsPercentOfPR TEXT,
-                FOREIGN KEY (routineId) REFERENCES Routine(id) ON DELETE CASCADE,
-                FOREIGN KEY (exerciseId) REFERENCES Exercise(id) ON DELETE CASCADE,
-                FOREIGN KEY (supersetId) REFERENCES Superset(id) ON DELETE SET NULL
+                angle TEXT NOT NULL,
+                videoUrl TEXT NOT NULL,
+                thumbnailUrl TEXT NOT NULL,
+                isTutorial INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (exerciseId) REFERENCES Exercise(id) ON DELETE CASCADE
             )
             """,
+            // ==================== Workout Sessions ====================
             """
             CREATE TABLE IF NOT EXISTS WorkoutSession (
-                id TEXT PRIMARY KEY NOT NULL,
-                exercise_id TEXT NOT NULL,
-                started_at INTEGER NOT NULL,
-                finished_at INTEGER,
+                id TEXT NOT NULL PRIMARY KEY,
+                timestamp INTEGER NOT NULL,
                 mode TEXT NOT NULL,
-                target_weight_kg REAL NOT NULL,
-                actual_reps INTEGER NOT NULL DEFAULT 0,
-                target_sets INTEGER,
-                sets_completed INTEGER,
-                target_reps INTEGER,
-                notes TEXT,
-                duration_seconds INTEGER,
-                echo_level TEXT,
-                eccentric_load_percent INTEGER,
-                concentric_load_percent INTEGER,
-                rest_time_seconds INTEGER,
+                targetReps INTEGER NOT NULL,
+                weightPerCableKg REAL NOT NULL,
+                progressionKg REAL NOT NULL DEFAULT 0.0,
+                duration INTEGER NOT NULL DEFAULT 0,
+                totalReps INTEGER NOT NULL DEFAULT 0,
+                warmupReps INTEGER NOT NULL DEFAULT 0,
+                workingReps INTEGER NOT NULL DEFAULT 0,
+                isJustLift INTEGER NOT NULL DEFAULT 0,
+                stopAtTop INTEGER NOT NULL DEFAULT 0,
+                eccentricLoad INTEGER NOT NULL DEFAULT 100,
+                echoLevel INTEGER NOT NULL DEFAULT 1,
+                exerciseId TEXT,
+                exerciseName TEXT,
+                routineSessionId TEXT,
+                routineName TEXT,
+                safetyFlags INTEGER NOT NULL DEFAULT 0,
+                deloadWarningCount INTEGER NOT NULL DEFAULT 0,
+                romViolationCount INTEGER NOT NULL DEFAULT 0,
+                spotterActivations INTEGER NOT NULL DEFAULT 0,
                 peakForceConcentricA REAL,
                 peakForceConcentricB REAL,
                 peakForceEccentricA REAL,
@@ -467,56 +468,59 @@ actual class DriverFactory {
                 rpe INTEGER,
                 updatedAt INTEGER,
                 serverId TEXT,
-                deletedAt INTEGER,
-                FOREIGN KEY (exercise_id) REFERENCES Exercise(id) ON DELETE CASCADE
+                deletedAt INTEGER
             )
             """,
+            // ==================== Metric Samples ====================
             """
             CREATE TABLE IF NOT EXISTS MetricSample (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
+                sessionId TEXT NOT NULL,
                 timestamp INTEGER NOT NULL,
-                position_mm_a REAL,
-                position_mm_b REAL,
-                velocity_mm_s_a REAL,
-                velocity_mm_s_b REAL,
-                load_kg_a REAL,
-                load_kg_b REAL,
-                power_w_a REAL,
-                power_w_b REAL,
-                FOREIGN KEY (session_id) REFERENCES WorkoutSession(id) ON DELETE CASCADE
+                position REAL,
+                positionB REAL,
+                velocity REAL,
+                velocityB REAL,
+                load REAL,
+                loadB REAL,
+                power REAL,
+                status INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (sessionId) REFERENCES WorkoutSession(id) ON DELETE CASCADE
             )
             """,
+            // ==================== Personal Records ====================
             """
             CREATE TABLE IF NOT EXISTS PersonalRecord (
-                id TEXT PRIMARY KEY NOT NULL,
-                exercise_id TEXT NOT NULL,
-                record_type TEXT NOT NULL,
-                value REAL NOT NULL,
-                achieved_at INTEGER NOT NULL,
-                session_id TEXT,
-                mode TEXT,
-                weight_at_record_kg REAL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                exerciseId TEXT NOT NULL,
+                exerciseName TEXT NOT NULL,
+                weight REAL NOT NULL,
+                reps INTEGER NOT NULL,
+                oneRepMax REAL NOT NULL,
+                achievedAt INTEGER NOT NULL,
+                workoutMode TEXT NOT NULL,
+                prType TEXT NOT NULL DEFAULT 'MAX_WEIGHT',
+                volume REAL NOT NULL DEFAULT 0.0,
                 updatedAt INTEGER,
                 serverId TEXT,
-                deletedAt INTEGER,
-                FOREIGN KEY (exercise_id) REFERENCES Exercise(id) ON DELETE CASCADE,
-                FOREIGN KEY (session_id) REFERENCES WorkoutSession(id) ON DELETE SET NULL
+                deletedAt INTEGER
             )
             """,
+            // ==================== Routines ====================
             """
-            CREATE TABLE IF NOT EXISTS UserProfile (
-                id TEXT PRIMARY KEY NOT NULL,
+            CREATE TABLE IF NOT EXISTS Routine (
+                id TEXT NOT NULL PRIMARY KEY,
                 name TEXT NOT NULL,
-                colorIndex INTEGER NOT NULL DEFAULT 0,
+                description TEXT NOT NULL DEFAULT '',
                 createdAt INTEGER NOT NULL,
-                isActive INTEGER NOT NULL DEFAULT 0,
-                supabase_user_id TEXT,
-                subscription_status TEXT DEFAULT 'free',
-                subscription_expires_at INTEGER,
-                last_auth_at INTEGER
+                lastUsed INTEGER,
+                useCount INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER,
+                serverId TEXT,
+                deletedAt INTEGER
             )
             """,
+            // ==================== Supersets ====================
             """
             CREATE TABLE IF NOT EXISTS Superset (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -528,7 +532,132 @@ actual class DriverFactory {
                 FOREIGN KEY (routineId) REFERENCES Routine(id) ON DELETE CASCADE
             )
             """,
-            // Training Cycle tables
+            // ==================== Routine Exercises ====================
+            """
+            CREATE TABLE IF NOT EXISTS RoutineExercise (
+                id TEXT NOT NULL PRIMARY KEY,
+                routineId TEXT NOT NULL,
+                exerciseName TEXT NOT NULL,
+                exerciseMuscleGroup TEXT NOT NULL DEFAULT '',
+                exerciseEquipment TEXT NOT NULL DEFAULT '',
+                exerciseDefaultCableConfig TEXT NOT NULL DEFAULT 'DOUBLE',
+                exerciseId TEXT,
+                cableConfig TEXT NOT NULL DEFAULT 'DOUBLE',
+                orderIndex INTEGER NOT NULL,
+                setReps TEXT NOT NULL DEFAULT '10,10,10',
+                weightPerCableKg REAL NOT NULL DEFAULT 0.0,
+                setWeights TEXT NOT NULL DEFAULT '',
+                mode TEXT NOT NULL DEFAULT 'OldSchool',
+                eccentricLoad INTEGER NOT NULL DEFAULT 100,
+                echoLevel INTEGER NOT NULL DEFAULT 1,
+                progressionKg REAL NOT NULL DEFAULT 0.0,
+                restSeconds INTEGER NOT NULL DEFAULT 60,
+                duration INTEGER,
+                setRestSeconds TEXT NOT NULL DEFAULT '[]',
+                perSetRestTime INTEGER NOT NULL DEFAULT 0,
+                isAMRAP INTEGER NOT NULL DEFAULT 0,
+                supersetId TEXT,
+                orderInSuperset INTEGER NOT NULL DEFAULT 0,
+                usePercentOfPR INTEGER NOT NULL DEFAULT 0,
+                weightPercentOfPR INTEGER NOT NULL DEFAULT 80,
+                prTypeForScaling TEXT NOT NULL DEFAULT 'MAX_WEIGHT',
+                setWeightsPercentOfPR TEXT,
+                FOREIGN KEY (routineId) REFERENCES Routine(id) ON DELETE CASCADE,
+                FOREIGN KEY (exerciseId) REFERENCES Exercise(id) ON DELETE SET NULL,
+                FOREIGN KEY (supersetId) REFERENCES Superset(id) ON DELETE SET NULL
+            )
+            """,
+            // ==================== Connection Logs ====================
+            """
+            CREATE TABLE IF NOT EXISTS ConnectionLog (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL,
+                eventType TEXT NOT NULL,
+                level TEXT NOT NULL,
+                deviceAddress TEXT,
+                deviceName TEXT,
+                message TEXT NOT NULL,
+                details TEXT,
+                metadata TEXT
+            )
+            """,
+            // ==================== Diagnostics History ====================
+            """
+            CREATE TABLE IF NOT EXISTS DiagnosticsHistory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                runtimeSeconds INTEGER NOT NULL,
+                faultMask INTEGER NOT NULL,
+                temp1 INTEGER NOT NULL,
+                temp2 INTEGER NOT NULL,
+                temp3 INTEGER NOT NULL,
+                temp4 INTEGER NOT NULL,
+                temp5 INTEGER NOT NULL,
+                temp6 INTEGER NOT NULL,
+                temp7 INTEGER NOT NULL,
+                temp8 INTEGER NOT NULL,
+                containsFaults INTEGER NOT NULL DEFAULT 0,
+                timestamp INTEGER NOT NULL
+            )
+            """,
+            // ==================== Phase Statistics ====================
+            """
+            CREATE TABLE IF NOT EXISTS PhaseStatistics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sessionId TEXT NOT NULL,
+                concentricKgAvg REAL NOT NULL,
+                concentricKgMax REAL NOT NULL,
+                concentricVelAvg REAL NOT NULL,
+                concentricVelMax REAL NOT NULL,
+                concentricWattAvg REAL NOT NULL,
+                concentricWattMax REAL NOT NULL,
+                eccentricKgAvg REAL NOT NULL,
+                eccentricKgMax REAL NOT NULL,
+                eccentricVelAvg REAL NOT NULL,
+                eccentricVelMax REAL NOT NULL,
+                eccentricWattAvg REAL NOT NULL,
+                eccentricWattMax REAL NOT NULL,
+                timestamp INTEGER NOT NULL,
+                FOREIGN KEY (sessionId) REFERENCES WorkoutSession(id) ON DELETE CASCADE
+            )
+            """,
+            // ==================== Gamification Tables ====================
+            """
+            CREATE TABLE IF NOT EXISTS EarnedBadge (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                badgeId TEXT NOT NULL UNIQUE,
+                earnedAt INTEGER NOT NULL,
+                celebratedAt INTEGER,
+                updatedAt INTEGER,
+                serverId TEXT,
+                deletedAt INTEGER
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS StreakHistory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                startDate INTEGER NOT NULL,
+                endDate INTEGER NOT NULL,
+                length INTEGER NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS GamificationStats (
+                id INTEGER PRIMARY KEY,
+                totalWorkouts INTEGER NOT NULL DEFAULT 0,
+                totalReps INTEGER NOT NULL DEFAULT 0,
+                totalVolumeKg INTEGER NOT NULL DEFAULT 0,
+                longestStreak INTEGER NOT NULL DEFAULT 0,
+                currentStreak INTEGER NOT NULL DEFAULT 0,
+                uniqueExercisesUsed INTEGER NOT NULL DEFAULT 0,
+                prsAchieved INTEGER NOT NULL DEFAULT 0,
+                lastWorkoutDate INTEGER,
+                streakStartDate INTEGER,
+                lastUpdated INTEGER NOT NULL,
+                updatedAt INTEGER,
+                serverId TEXT
+            )
+            """,
+            // ==================== Training Cycles ====================
             """
             CREATE TABLE IF NOT EXISTS TrainingCycle (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -621,41 +750,18 @@ actual class DriverFactory {
                 FOREIGN KEY (exercise_id) REFERENCES Exercise(id) ON DELETE CASCADE
             )
             """,
-            // Gamification tables
+            // ==================== User Profiles ====================
             """
-            CREATE TABLE IF NOT EXISTS EarnedBadge (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                badgeId TEXT NOT NULL UNIQUE,
-                earnedAt INTEGER NOT NULL,
-                celebratedAt INTEGER,
-                updatedAt INTEGER,
-                serverId TEXT,
-                deletedAt INTEGER
-            )
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS StreakHistory (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                startDate INTEGER NOT NULL,
-                endDate INTEGER NOT NULL,
-                length INTEGER NOT NULL
-            )
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS GamificationStats (
-                id INTEGER PRIMARY KEY,
-                totalWorkouts INTEGER NOT NULL DEFAULT 0,
-                totalReps INTEGER NOT NULL DEFAULT 0,
-                totalVolumeKg INTEGER NOT NULL DEFAULT 0,
-                longestStreak INTEGER NOT NULL DEFAULT 0,
-                currentStreak INTEGER NOT NULL DEFAULT 0,
-                uniqueExercisesUsed INTEGER NOT NULL DEFAULT 0,
-                prsAchieved INTEGER NOT NULL DEFAULT 0,
-                lastWorkoutDate INTEGER,
-                streakStartDate INTEGER,
-                lastUpdated INTEGER NOT NULL,
-                updatedAt INTEGER,
-                serverId TEXT
+            CREATE TABLE IF NOT EXISTS UserProfile (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                colorIndex INTEGER NOT NULL DEFAULT 0,
+                createdAt INTEGER NOT NULL,
+                isActive INTEGER NOT NULL DEFAULT 0,
+                supabase_user_id TEXT,
+                subscription_status TEXT DEFAULT 'free',
+                subscription_expires_at INTEGER,
+                last_auth_at INTEGER
             )
             """
         )
@@ -751,17 +857,34 @@ actual class DriverFactory {
 
     /**
      * Create all indexes using IF NOT EXISTS for idempotency.
+     * CRITICAL: Column names must match VitruvianDatabase.sq exactly.
      */
     private fun createAllIndexes(driver: SqlDriver) {
         val indexes = listOf(
+            // Exercise indexes
+            "CREATE INDEX IF NOT EXISTS idx_exercise_popularity ON Exercise(popularity DESC, name ASC)",
+            "CREATE INDEX IF NOT EXISTS idx_exercise_last_performed ON Exercise(lastPerformed DESC)",
+            // RoutineExercise indexes
             "CREATE INDEX IF NOT EXISTS idx_routine_exercise_routine ON RoutineExercise(routineId)",
-            "CREATE INDEX IF NOT EXISTS idx_routine_exercise_exercise ON RoutineExercise(exerciseId)",
             "CREATE INDEX IF NOT EXISTS idx_routine_exercise_superset ON RoutineExercise(supersetId)",
-            "CREATE INDEX IF NOT EXISTS idx_workout_session_exercise ON WorkoutSession(exercise_id)",
-            "CREATE INDEX IF NOT EXISTS idx_workout_session_started ON WorkoutSession(started_at)",
-            "CREATE INDEX IF NOT EXISTS idx_metric_sample_session ON MetricSample(session_id)",
-            "CREATE INDEX IF NOT EXISTS idx_personal_record_exercise ON PersonalRecord(exercise_id)",
+            // WorkoutSession indexes
+            "CREATE INDEX IF NOT EXISTS idx_workout_session_exercise ON WorkoutSession(exerciseId)",
+            "CREATE INDEX IF NOT EXISTS idx_workout_session_started ON WorkoutSession(timestamp)",
+            // MetricSample indexes
+            "CREATE INDEX IF NOT EXISTS idx_metric_sample_session ON MetricSample(sessionId)",
+            // PersonalRecord indexes
+            "CREATE INDEX IF NOT EXISTS idx_personal_record_exercise ON PersonalRecord(exerciseId)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_unique ON PersonalRecord(exerciseId, workoutMode, prType)",
+            // Superset indexes
             "CREATE INDEX IF NOT EXISTS idx_superset_routine ON Superset(routineId)",
+            // ConnectionLog indexes
+            "CREATE INDEX IF NOT EXISTS idx_connection_log_timestamp ON ConnectionLog(timestamp)",
+            "CREATE INDEX IF NOT EXISTS idx_connection_log_device ON ConnectionLog(deviceAddress)",
+            // DiagnosticsHistory indexes
+            "CREATE INDEX IF NOT EXISTS idx_diagnostics_timestamp ON DiagnosticsHistory(timestamp)",
+            // PhaseStatistics indexes
+            "CREATE INDEX IF NOT EXISTS idx_phase_stats_session ON PhaseStatistics(sessionId)",
+            // Training Cycle indexes
             "CREATE INDEX IF NOT EXISTS idx_cycle_day_cycle ON CycleDay(cycle_id)",
             "CREATE INDEX IF NOT EXISTS idx_cycle_progress_cycle ON CycleProgress(cycle_id)",
             "CREATE INDEX IF NOT EXISTS idx_planned_set_exercise ON PlannedSet(routine_exercise_id)",
@@ -773,7 +896,7 @@ actual class DriverFactory {
             try {
                 driver.execute(null, sql, 0)
             } catch (e: Exception) {
-                // Index may already exist - that's fine
+                // Index may already exist or be created with incompatible definition - that's fine
             }
         }
     }

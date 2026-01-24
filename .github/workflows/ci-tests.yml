@@ -109,6 +109,20 @@ jobs:
           path: androidApp/build/outputs/apk/debug/*.apk
           retention-days: 7
 
+  ios-schema-check:
+    name: iOS Schema Sync Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate iOS schema matches SQLDelight
+        run: |
+          chmod +x .github/scripts/validate-ios-schema.sh
+          ./.github/scripts/validate-ios-schema.sh
+
   lint:
     name: Lint Check
     runs-on: ubuntu-latest
