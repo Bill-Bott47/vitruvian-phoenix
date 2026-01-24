@@ -137,8 +137,8 @@ class WorkoutRobot(
         return this
     }
 
-    suspend fun simulateRepNotification(repIndex: Int, metric: WorkoutMetric, warmupCount: Int = 0): WorkoutRobot {
-        // New rep counting formula: workingReps = down - repsRomCount
+    suspend fun simulateRepNotification(repIndex: Int, metric: WorkoutMetric, warmupCount: Int = 0, warmupTarget: Int = 3, workingTarget: Int = 10): WorkoutRobot {
+        // Issue #210: Include machine's warmup/working targets for sync verification
         // For working reps: repsRomCount stays at warmupCount, completeCounter (down) increments
         bleRepository.emitMetric(metric)
         bleRepository.emitRepNotification(
@@ -146,7 +146,9 @@ class WorkoutRobot(
                 topCounter = repIndex + warmupCount,
                 completeCounter = repIndex + warmupCount,  // down counter
                 repsRomCount = warmupCount,  // warmup count from machine
-                repsSetCount = repIndex,  // legacy - ignored by new formula
+                repsRomTotal = warmupTarget, // Issue #210: Machine's warmup target
+                repsSetCount = repIndex,     // working reps from machine
+                repsSetTotal = workingTarget, // Issue #210: Machine's working target
                 rangeTop = 800f,
                 rangeBottom = 0f,
                 rawData = ByteArray(24),

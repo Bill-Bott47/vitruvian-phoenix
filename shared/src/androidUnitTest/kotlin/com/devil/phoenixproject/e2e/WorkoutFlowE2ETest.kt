@@ -272,7 +272,8 @@ class WorkoutFlowE2ETest {
         advanceUntilIdle()
 
         localRobot.verifyWorkoutActive()
-        kotlin.test.assertEquals(3, fakeBleRepository.commandsReceived.size)
+        // Issue #222: INIT command removed - now only CONFIG (0x04) + START (0x03)
+        kotlin.test.assertEquals(2, fakeBleRepository.commandsReceived.size)
     }
 
     @Test
@@ -293,8 +294,9 @@ class WorkoutFlowE2ETest {
         viewModel.startWorkout(skipCountdown = true)
         advanceUntilIdle()
 
-        localRobot.simulateRepNotification(1, metric)
-        localRobot.simulateRepNotification(2, metric)
+        // Issue #210: Pass correct warmup/working targets to match test configuration
+        localRobot.simulateRepNotification(1, metric, warmupCount = 0, warmupTarget = 0, workingTarget = 2)
+        localRobot.simulateRepNotification(2, metric, warmupCount = 0, warmupTarget = 0, workingTarget = 2)
         advanceUntilIdle()
 
         localRobot.verifyWorkoutSummary()

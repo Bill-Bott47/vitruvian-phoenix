@@ -732,9 +732,12 @@ class MainViewModel constructor(
         // CRITICAL: Pass isLegacyFormat to ensure correct counting method (Issue #123)
         // Samsung devices send 6-byte legacy format where repsSetCount=0, requiring
         // processLegacy() which tracks topCounter increments instead of repsSetCount
+        // Issue #210: Pass repsRomTotal/repsSetTotal for warmup sync verification
         repCounter.process(
             repsRomCount = notification.repsRomCount,
+            repsRomTotal = notification.repsRomTotal,  // Issue #210: Machine's warmup target
             repsSetCount = notification.repsSetCount,
+            repsSetTotal = notification.repsSetTotal,  // Issue #210: Machine's working target
             up = notification.topCounter,
             down = notification.completeCounter,
             posA = rawPosA,
@@ -999,22 +1002,14 @@ class MainViewModel constructor(
             }
             Logger.d { "Built ${command.size}-byte workout command for ${params.programMode}" }
 
-            // 2. Send INIT Command (0x0A) - ensures clean state
-            // Per parent repo protocol: "Sometimes sent before start to ensure clean state"
-            try {
-                val initCommand = BlePacketFactory.createInitCommand()
-                bleRepository.sendWorkoutCommand(initCommand)
-                Logger.i { "INIT command sent (0x0A) - reset machine state" }
-            } catch (e: Exception) {
-                Logger.w(e) { "INIT command failed (non-fatal): ${e.message}" }
-                // Continue anyway - init is optional
-            }
+            // Issue #222: REMOVED INIT command (0x0A) before workout start.
+            // Per parent repo BleRepositoryImpl.kt: USE_INIT_RESET_BEFORE_START = false
+            // Comment: "DEPRECATED: The official app does not use the 0x0A handshake.
+            // The 0x0A/0x11 init sequence is legacy web app protocol that causes issues."
+            // Sending 0x0A here was causing duplicate resets when combined with
+            // STOP/RESET from skipRest(), leading to yellow light faults.
 
-            // Issue #110: Add delay between commands to prevent BLE congestion
-            // V-Form devices can fault when commands are sent too rapidly
-            delay(50)
-
-            // 3. Send Configuration Command (0x04 header, 96 bytes)
+            // 2. Send Configuration Command (0x04 header, 96 bytes)
             // This sets the workout parameters but does NOT engage the motors
             try {
                 bleRepository.sendWorkoutCommand(command)
@@ -1031,7 +1026,7 @@ class MainViewModel constructor(
             // Issue #110: Add delay between commands to prevent BLE congestion
             delay(50)
 
-            // 4. Send START Command (0x03) - ENABLES THE MOTORS!
+            // 3. Send START Command (0x03) - ENABLES THE MOTORS!
             // Per parent repo protocol analysis: Config (0x04) sets params, START (0x03) engages
             try {
                 val startCommand = BlePacketFactory.createStartCommand()
@@ -1046,7 +1041,7 @@ class MainViewModel constructor(
                 return@launch
             }
 
-            // 5. Reset State
+            // 4. Reset State
             currentSessionId = KmpUtils.randomUUID()
             _repCount.value = RepCount()
             // Issue #213: Reset Echo mode force telemetry to avoid showing stale data from previous set
@@ -1075,7 +1070,7 @@ class MainViewModel constructor(
                 Logger.d { "Starting TIMED cable exercise: ${currentExercise?.exercise?.name} for ${exerciseDuration}s (no ROM calibration)" }
             }
 
-            // 6. Countdown (skipped for Just Lift auto-start, can be skipped mid-way via skipCountdownRequested)
+            // 5. Countdown (skipped for Just Lift auto-start, can be skipped mid-way via skipCountdownRequested)
             if (!skipCountdownRequested && !isJustLiftMode) {
                 for (i in 5 downTo 1) {
                     if (skipCountdownRequested) break
@@ -3431,10 +3426,26 @@ class MainViewModel constructor(
             // Reset timed workout flag
             isCurrentWorkoutTimed = false
 
+            // Issue #222: Check if this was a bodyweight/duration exercise (no BLE workout was started)
+            // For bodyweight exercises with duration, startWorkout() skips all BLE commands,
+            // so calling stopWorkout() would send RESET to an already-idle machine.
+            // This can cause issues when transitioning to the next cable exercise in supersets.
+            val currentExercise = _loadedRoutine.value?.exercises?.getOrNull(_currentExerciseIndex.value)
+            val wasBodyweightDuration = currentExercise?.let {
+                val isBodyweight = isBodyweightExercise(it)
+                val hasDuration = it.duration != null && it.duration > 0
+                isBodyweight && hasDuration
+            } ?: false
+
             // Stop hardware - use stopWorkout() which sends RESET command (0x0A), delays 50ms, and STOPS polling
             // This matches parent repo behavior - polling must be fully stopped before restarting
             // to properly clear the machine's internal state (prevents red light mode on 2nd+ sets)
-            bleRepository.stopWorkout()
+            // Issue #222: Skip for bodyweight/duration exercises since no BLE workout was started
+            if (!wasBodyweightDuration) {
+                bleRepository.stopWorkout()
+            } else {
+                Logger.d("handleSetCompletion: Skipping stopWorkout() for bodyweight/duration exercise (no BLE workout was started)")
+            }
             _hapticEvents.emit(HapticEvent.WORKOUT_END)
 
             // Save session
@@ -4073,16 +4084,20 @@ class MainViewModel constructor(
             // This supports use cases like alternating arms where user wants no rest between sides
             if (restDuration == 0) {
                 Logger.d { "Rest duration is 0 - skipping rest timer, advancing immediately" }
-                // Issue #222: Add STOP/RESET sequence even for 0-rest transitions
-                // Same pattern as skipRest() to prevent yellow light faults
-                try {
-                    bleRepository.sendStopCommand()
-                    delay(100)
-                    bleRepository.stopWorkout()
-                    delay(150)
-                    Logger.d("MainViewModel") { "Issue #222: BLE stop sequence sent for 0-rest transition" }
-                } catch (e: Exception) {
-                    Logger.w(e) { "Stop command for 0-rest transition failed (non-fatal): ${e.message}" }
+                // Issue #222: Only send STOP/RESET if previous exercise was cable-based
+                val wasBodyweight = isBodyweightExercise(currentExercise)
+                if (!wasBodyweight) {
+                    try {
+                        bleRepository.sendStopCommand()
+                        delay(100)
+                        bleRepository.stopWorkout()
+                        delay(150)
+                        Logger.d("MainViewModel") { "Issue #222: BLE stop sequence sent for 0-rest transition (cable exercise)" }
+                    } catch (e: Exception) {
+                        Logger.w(e) { "Stop command for 0-rest transition failed (non-fatal): ${e.message}" }
+                    }
+                } else {
+                    Logger.d("MainViewModel") { "Issue #222: Skipping BLE stop for 0-rest - previous was bodyweight" }
                 }
                 if (isSingleExerciseMode()) {
                     advanceToNextSetInSingleExercise()
@@ -4199,17 +4214,20 @@ class MainViewModel constructor(
             }
 
             if (autoplay) {
-                // Issue #222: Add STOP/RESET sequence before starting next set
-                // Even with rest timer countdown, need to ensure clean machine state
-                // especially for short rest times (5s superset minimum)
-                try {
-                    bleRepository.sendStopCommand()
-                    delay(100)
-                    bleRepository.stopWorkout()
-                    delay(150)
-                    Logger.d("MainViewModel") { "Issue #222: BLE stop sequence sent after rest timer" }
-                } catch (e: Exception) {
-                    Logger.w(e) { "Stop command after rest timer failed (non-fatal): ${e.message}" }
+                // Issue #222: Only send STOP/RESET if previous exercise was cable-based
+                val wasBodyweight = isBodyweightExercise(currentExercise)
+                if (!wasBodyweight) {
+                    try {
+                        bleRepository.sendStopCommand()
+                        delay(100)
+                        bleRepository.stopWorkout()
+                        delay(150)
+                        Logger.d("MainViewModel") { "Issue #222: BLE stop sequence sent after rest timer (cable exercise)" }
+                    } catch (e: Exception) {
+                        Logger.w(e) { "Stop command after rest timer failed (non-fatal): ${e.message}" }
+                    }
+                } else {
+                    Logger.d("MainViewModel") { "Issue #222: Skipping BLE stop after rest timer - previous was bodyweight" }
                 }
                 if (isSingleExercise) {
                     advanceToNextSetInSingleExercise()
@@ -4487,32 +4505,38 @@ class MainViewModel constructor(
 
     /**
      * Skip the current rest timer and immediately start the next set/exercise.
-     * Issue #222: Added STOP/RESET sequence to prevent yellow light errors when
-     * skipping rest during superset Quick Rest screen. This matches the pattern
-     * established in Issue #205 for jumpToExercise().
+     * Issue #222: STOP/RESET is only needed if the previous exercise was a cable exercise
+     * (i.e., BLE workout was actually running). For bodyweight exercises, the machine
+     * was idle, so there's nothing to stop/reset.
      */
     fun skipRest() {
         if (_workoutState.value is WorkoutState.Resting) {
             restTimerJob?.cancel()
             restTimerJob = null
 
-            // Issue #222: Need to perform BLE cleanup before starting next set
-            // This is async to allow proper timing between commands
+            // Issue #222: Check if the exercise we just completed was bodyweight
+            // If so, skip STOP/RESET since the machine was idle during bodyweight exercises
+            val currentExercise = _loadedRoutine.value?.exercises?.getOrNull(_currentExerciseIndex.value)
+            val wasBodyweight = isBodyweightExercise(currentExercise)
+
             viewModelScope.launch {
-                try {
-                    // Issue #222: Clear any fault state with StopPacket (0x50)
-                    // Same pattern as Issue #205 fix in jumpToExercise()
-                    bleRepository.sendStopCommand()
-                    delay(100)  // Allow fault clear to process
+                if (!wasBodyweight) {
+                    // Only send STOP/RESET if previous exercise was cable-based
+                    try {
+                        // Issue #205: Clear any fault state with StopPacket (0x50)
+                        bleRepository.sendStopCommand()
+                        delay(100)  // Allow fault clear to process
 
-                    // Full reset with RESET command (0x0A)
-                    bleRepository.stopWorkout()
-                    delay(150)  // Settling time for machine to process
+                        // Full reset with RESET command (0x0A)
+                        bleRepository.stopWorkout()
+                        delay(150)  // Settling time for machine to process
 
-                    Logger.d("MainViewModel") { "Issue #222: BLE stop sequence sent before skip rest" }
-                } catch (e: Exception) {
-                    Logger.w(e) { "Stop command before skip rest failed (non-fatal): ${e.message}" }
-                    // Continue anyway - the stop may have succeeded partially
+                        Logger.d("MainViewModel") { "Issue #222: BLE stop sequence sent before skip rest (cable exercise)" }
+                    } catch (e: Exception) {
+                        Logger.w(e) { "Stop command before skip rest failed (non-fatal): ${e.message}" }
+                    }
+                } else {
+                    Logger.d("MainViewModel") { "Issue #222: Skipping BLE stop sequence - previous exercise was bodyweight (machine was idle)" }
                 }
 
                 if (isSingleExerciseMode()) {
@@ -4527,21 +4551,29 @@ class MainViewModel constructor(
     /**
      * Manually trigger starting the next set when autoplay is disabled.
      * Called from UI when user taps "Start Next Set" button.
-     * Issue #222: Added STOP/RESET sequence to prevent yellow light faults.
+     * Issue #222: STOP/RESET only needed if previous exercise was cable-based.
      */
     fun startNextSet() {
         val state = _workoutState.value
         if (state is WorkoutState.Resting && state.restSecondsRemaining == 0) {
-            // Issue #222: Same STOP/RESET pattern as skipRest()
+            // Issue #222: Check if the exercise we just completed was bodyweight
+            val currentExercise = _loadedRoutine.value?.exercises?.getOrNull(_currentExerciseIndex.value)
+            val wasBodyweight = isBodyweightExercise(currentExercise)
+
             viewModelScope.launch {
-                try {
-                    bleRepository.sendStopCommand()
-                    delay(100)
-                    bleRepository.stopWorkout()
-                    delay(150)
-                    Logger.d("MainViewModel") { "Issue #222: BLE stop sequence sent for startNextSet" }
-                } catch (e: Exception) {
-                    Logger.w(e) { "Stop command for startNextSet failed (non-fatal): ${e.message}" }
+                if (!wasBodyweight) {
+                    // Only send STOP/RESET if previous exercise was cable-based
+                    try {
+                        bleRepository.sendStopCommand()
+                        delay(100)
+                        bleRepository.stopWorkout()
+                        delay(150)
+                        Logger.d("MainViewModel") { "Issue #222: BLE stop sequence sent for startNextSet (cable exercise)" }
+                    } catch (e: Exception) {
+                        Logger.w(e) { "Stop command for startNextSet failed (non-fatal): ${e.message}" }
+                    }
+                } else {
+                    Logger.d("MainViewModel") { "Issue #222: Skipping BLE stop sequence for startNextSet - previous was bodyweight" }
                 }
 
                 if (isSingleExerciseMode()) {

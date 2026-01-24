@@ -2388,23 +2388,29 @@ class KableBleRepository : BleRepository {
             // Check if we have full 24-byte rep data (+ 1 byte opcode = 25 total)
             if (data.size >= 25) {
                 // FULL 24-byte packet - parse all fields (skip opcode at index 0)
+                // Issue #210: Parse ALL 8 fields to match official app (Reps.java)
                 val upCounter = getInt32LE(data, 1)
                 val downCounter = getInt32LE(data, 5)
                 val rangeTop = getFloatLE(data, 9)
                 val rangeBottom = getFloatLE(data, 13)
                 val repsRomCount = getUInt16LE(data, 17)
+                val repsRomTotal = getUInt16LE(data, 19)  // Issue #210: Machine's warmup target
                 val repsSetCount = getUInt16LE(data, 21)
+                val repsSetTotal = getUInt16LE(data, 23)  // Issue #210: Machine's working target
 
                 log.d { "Rep notification (24-byte format, RX):" }
                 log.d { "  up=$upCounter, down=$downCounter" }
-                log.d { "  repsRomCount=$repsRomCount (warmup), repsSetCount=$repsSetCount (working)" }
+                log.d { "  repsRomCount=$repsRomCount (warmup done), repsRomTotal=$repsRomTotal (warmup target)" }
+                log.d { "  repsSetCount=$repsSetCount (working done), repsSetTotal=$repsSetTotal (working target)" }
                 log.d { "  hex=${data.joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0').uppercase() }}" }
 
                 notification = RepNotification(
                     topCounter = upCounter,
                     completeCounter = downCounter,
                     repsRomCount = repsRomCount,
+                    repsRomTotal = repsRomTotal,
                     repsSetCount = repsSetCount,
+                    repsSetTotal = repsSetTotal,
                     rangeTop = rangeTop,
                     rangeBottom = rangeBottom,
                     rawData = data,
@@ -2425,7 +2431,9 @@ class KableBleRepository : BleRepository {
                     topCounter = topCounter,
                     completeCounter = completeCounter,
                     repsRomCount = 0,  // Not available in legacy format
+                    repsRomTotal = 0,
                     repsSetCount = 0,  // Not available in legacy format
+                    repsSetTotal = 0,
                     rangeTop = 0f,
                     rangeBottom = 0f,
                     rawData = data,
@@ -2486,23 +2494,29 @@ class KableBleRepository : BleRepository {
             // Check if we have full 24-byte rep data (NO opcode prefix from REPS characteristic)
             if (data.size >= 24) {
                 // FULL 24-byte packet - parse all fields (data starts at offset 0)
+                // Issue #210: Parse ALL 8 fields to match official app (Reps.java)
                 val upCounter = getInt32LE(data, 0)
                 val downCounter = getInt32LE(data, 4)
                 val rangeTop = getFloatLE(data, 8)
                 val rangeBottom = getFloatLE(data, 12)
                 val repsRomCount = getUInt16LE(data, 16)
+                val repsRomTotal = getUInt16LE(data, 18)  // Issue #210: Machine's warmup target
                 val repsSetCount = getUInt16LE(data, 20)
+                val repsSetTotal = getUInt16LE(data, 22)  // Issue #210: Machine's working target
 
                 log.i { "🔥 REPS (24-byte official format):" }
                 log.i { "  up=$upCounter, down=$downCounter" }
-                log.i { "  repsRomCount=$repsRomCount (warmup), repsSetCount=$repsSetCount (working)" }
+                log.i { "  repsRomCount=$repsRomCount (warmup done), repsRomTotal=$repsRomTotal (warmup target)" }
+                log.i { "  repsSetCount=$repsSetCount (working done), repsSetTotal=$repsSetTotal (working target)" }
                 log.i { "  rangeTop=$rangeTop, rangeBottom=$rangeBottom" }
 
                 notification = RepNotification(
                     topCounter = upCounter,
                     completeCounter = downCounter,
                     repsRomCount = repsRomCount,
+                    repsRomTotal = repsRomTotal,
                     repsSetCount = repsSetCount,
+                    repsSetTotal = repsSetTotal,
                     rangeTop = rangeTop,
                     rangeBottom = rangeBottom,
                     rawData = data,
@@ -2521,7 +2535,9 @@ class KableBleRepository : BleRepository {
                     topCounter = topCounter,
                     completeCounter = completeCounter,
                     repsRomCount = 0,
+                    repsRomTotal = 0,
                     repsSetCount = 0,
+                    repsSetTotal = 0,
                     rangeTop = 0f,
                     rangeBottom = 0f,
                     rawData = data,

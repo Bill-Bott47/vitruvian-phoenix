@@ -209,13 +209,17 @@ object TestFixtures {
         topCounter: Int = 1,
         completeCounter: Int = 1,
         repsRomCount: Int = 0,
+        repsRomTotal: Int = 3,  // Issue #210: Machine's warmup target
         repsSetCount: Int = 1,
+        repsSetTotal: Int = 10, // Issue #210: Machine's working target
         timestamp: Long = currentTimeMillis()
     ) = RepNotification(
         topCounter = topCounter,
         completeCounter = completeCounter,
         repsRomCount = repsRomCount,
+        repsRomTotal = repsRomTotal,
         repsSetCount = repsSetCount,
+        repsSetTotal = repsSetTotal,
         rangeTop = 800f,
         rangeBottom = 0f,
         rawData = ByteArray(24),

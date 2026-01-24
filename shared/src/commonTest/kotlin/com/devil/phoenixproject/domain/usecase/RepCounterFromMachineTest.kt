@@ -116,8 +116,8 @@ class RepCounterFromMachineTest {
     }
 
     @Test
-    fun `working reps calculated correctly regardless of repsSetCount`() {
-        // Issue #210: Even if repsSetCount lags, working reps come from down counter
+    fun `working reps come directly from repsSetCount`() {
+        // Issue #210 v2: Trust the machine - working reps come from repsSetCount directly
         repCounter.configure(
             warmupTarget = 1,
             workingTarget = 5,
@@ -128,14 +128,14 @@ class RepCounterFromMachineTest {
         // Establish baseline
         repCounter.process(repsRomCount = 0, repsSetCount = 0, up = 0, down = 0)
 
-        // Warmup complete (down = 1)
+        // Warmup complete (repsRomCount = 1)
         repCounter.process(repsRomCount = 1, repsSetCount = 0, up = 1, down = 1)
 
-        // First working rep - down = 2, repsSetCount could lag
-        repCounter.process(repsRomCount = 1, repsSetCount = 0, up = 2, down = 2)
+        // First working rep - repsSetCount = 1 (trust machine)
+        repCounter.process(repsRomCount = 1, repsSetCount = 1, up = 2, down = 2)
 
         val count = repCounter.getRepCount()
-        assertEquals(1, count.workingReps)  // From down counter: 2 - 1 = 1
+        assertEquals(1, count.workingReps)  // Directly from repsSetCount
     }
 
     @Test
@@ -221,14 +221,14 @@ class RepCounterFromMachineTest {
     }
 
     @Test
-    fun `stopAtTop true completes workout at TOP of final rep`() {
-        // stopAtTop: When one rep away from target, complete at TOP (count final rep at TOP)
+    fun `stopAtTop true completes workout when repsSetCount reaches target`() {
+        // Issue #210 v2: Trust repsSetCount - workout completes when machine reports target reached
         repCounter.configure(warmupTarget = 0, workingTarget = 5, isJustLift = false, stopAtTop = true)
 
         // Establish baseline
         repCounter.process(repsRomCount = 0, repsSetCount = 0, up = 0, down = 0)
 
-        // Simulate 4 reps via down counter
+        // Simulate 4 reps via repsSetCount
         repCounter.process(repsRomCount = 0, repsSetCount = 1, up = 1, down = 1)
         repCounter.process(repsRomCount = 0, repsSetCount = 2, up = 2, down = 2)
         repCounter.process(repsRomCount = 0, repsSetCount = 3, up = 3, down = 3)
@@ -238,11 +238,11 @@ class RepCounterFromMachineTest {
         assertEquals(4, countBefore.workingReps)
         assertFalse(repCounter.shouldStopWorkout())
 
-        // Rep 5: At TOP, workout completes (final rep counted at TOP)
-        repCounter.process(repsRomCount = 0, repsSetCount = 4, up = 5, down = 4)  // TOP - triggers stopAtTop
+        // Rep 5: Machine reports repsSetCount = 5
+        repCounter.process(repsRomCount = 0, repsSetCount = 5, up = 5, down = 5)
 
         val count = repCounter.getRepCount()
-        assertEquals(5, count.workingReps)  // Final rep counted at TOP
+        assertEquals(5, count.workingReps)  // From repsSetCount
         assertTrue(repCounter.shouldStopWorkout())
         assertTrue(capturedEvents.any { it.type == RepType.WORKOUT_COMPLETE })
     }
@@ -269,20 +269,20 @@ class RepCounterFromMachineTest {
     }
 
     @Test
-    fun `stopAtTop true does not show pending state for normal reps`() {
-        // With stopAtTop=true, pending state is not used
-        repCounter.configure(warmupTarget = 1, workingTarget = 10, isJustLift = false, stopAtTop = true)
+    fun `pending state shown when at TOP after warmup complete`() {
+        // Issue #210 v2: Pending state shows for working reps after warmup complete
+        repCounter.configure(warmupTarget = 1, workingTarget = 10, isJustLift = false, stopAtTop = false)
 
         // Establish baseline and complete warmup
         repCounter.process(repsRomCount = 0, repsSetCount = 0, up = 0, down = 0)
         repCounter.process(repsRomCount = 1, repsSetCount = 0, up = 1, down = 1)
 
-        // Go up - no pending state for stopAtTop mode
+        // Go up - should show pending for working reps
         repCounter.process(repsRomCount = 1, repsSetCount = 0, up = 2, down = 1)
 
         val count = repCounter.getRepCount()
-        assertFalse(count.hasPendingRep, "stopAtTop=true should not use pending state")
-        // Working reps don't increment until down counter does
+        assertTrue(count.hasPendingRep, "Should show pending state at TOP")
+        // Working reps don't increment until repsSetCount does
         assertEquals(0, count.workingReps)
     }
 
@@ -376,24 +376,29 @@ class RepCounterFromMachineTest {
         assertEquals(1, countAfterConfirm.workingReps)  // From down counter: 2 - 1 = 1
     }
 
-    // ========== Issue #210: Final Rep Detection Test ==========
+    // ========== Issue #210: Trust repsSetCount from Machine ==========
 
     @Test
-    fun `final rep detected even if repsSetCount lags`() {
-        // Issue #210: This is the core bug fix - machine may stop before repsSetCount updates
-        // The down counter should still show the correct count
+    fun `working reps match repsSetCount from machine`() {
+        // Issue #210 v2: Trust repsSetCount directly - it's the source of truth
         repCounter.configure(warmupTarget = 3, workingTarget = 5, isJustLift = false, stopAtTop = false)
 
         // Establish baseline
         repCounter.process(repsRomCount = 0, repsSetCount = 0, up = 0, down = 0)
 
-        // 3 warmup reps + 5 working reps = 8 total
-        // Simulate the bug: repsSetCount stuck at 4 but down counter shows 8
+        // Machine reports 4 working reps complete
         repCounter.process(repsRomCount = 3, repsSetCount = 4, up = 8, down = 8)
 
         val count = repCounter.getRepCount()
         assertEquals(3, count.warmupReps)
-        assertEquals(5, count.workingReps)  // From down: 8 - 3 = 5
+        assertEquals(4, count.workingReps)  // Directly from repsSetCount
+        assertFalse(repCounter.shouldStopWorkout())  // Not at target yet
+
+        // Machine reports 5th rep (target reached)
+        repCounter.process(repsRomCount = 3, repsSetCount = 5, up = 9, down = 9)
+
+        val countFinal = repCounter.getRepCount()
+        assertEquals(5, countFinal.workingReps)
         assertTrue(repCounter.shouldStopWorkout())
         assertTrue(capturedEvents.any { it.type == RepType.WORKOUT_COMPLETE })
     }

@@ -422,7 +422,9 @@ class SimulatorBleRepository(
             topCounter = topCounter,
             completeCounter = completeCounter,
             repsRomCount = currentWarmupReps,
+            repsRomTotal = warmupTarget,  // Issue #210: Machine's warmup target
             repsSetCount = currentWorkingReps,
+            repsSetTotal = params.reps,   // Issue #210: Machine's working target
             rangeTop = config.positionRange.endInclusive,
             rangeBottom = config.positionRange.start,
             rawData = byteArrayOf(), // No raw BLE data in simulator

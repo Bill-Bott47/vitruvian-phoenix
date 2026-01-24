@@ -80,7 +80,9 @@ data class RepNotification(
     val topCounter: Int,
     val completeCounter: Int,
     val repsRomCount: Int,
+    val repsRomTotal: Int,    // Issue #210: Machine's warmup target (bytes 18-19) - for sync verification
     val repsSetCount: Int,
+    val repsSetTotal: Int,    // Issue #210: Machine's working target (bytes 22-23) - for sync verification
     val rangeTop: Float = 0f,
     val rangeBottom: Float = 0f,
     val rawData: ByteArray,
@@ -96,7 +98,9 @@ data class RepNotification(
         if (topCounter != other.topCounter) return false
         if (completeCounter != other.completeCounter) return false
         if (repsRomCount != other.repsRomCount) return false
+        if (repsRomTotal != other.repsRomTotal) return false
         if (repsSetCount != other.repsSetCount) return false
+        if (repsSetTotal != other.repsSetTotal) return false
         if (rangeTop != other.rangeTop) return false
         if (rangeBottom != other.rangeBottom) return false
         if (!rawData.contentEquals(other.rawData)) return false
@@ -110,7 +114,9 @@ data class RepNotification(
         var result = topCounter
         result = 31 * result + completeCounter
         result = 31 * result + repsRomCount
+        result = 31 * result + repsRomTotal
         result = 31 * result + repsSetCount
+        result = 31 * result + repsSetTotal
         result = 31 * result + rangeTop.hashCode()
         result = 31 * result + rangeBottom.hashCode()
         result = 31 * result + rawData.contentHashCode()

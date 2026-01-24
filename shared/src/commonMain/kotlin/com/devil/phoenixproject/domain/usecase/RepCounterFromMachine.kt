@@ -35,12 +35,6 @@ class RepCounterFromMachine {
     private var shouldStop = false
     private var isAMRAP = false
 
-    // Issue #210: Track total reps from down counter for reliable counting
-    // The down counter increments immediately at the bottom of each rep,
-    // before any deload logic, making it more reliable than repsSetCount
-    // which may not update on the final rep.
-    private var totalDownReps = 0
-
     // Pending rep state - true when at TOP, waiting for machine confirm
     private var hasPendingRep = false
     private var pendingRepProgress = 0f  // 0.0 at TOP, 1.0 at BOTTOM (legacy, kept for compatibility)
@@ -112,8 +106,7 @@ class RepCounterFromMachine {
         shouldStop = false
         hasPendingRep = false
         pendingRepProgress = 0f
-        totalDownReps = 0  // Issue #210: Reset down counter tracking
-        // Issue #163: Reset phase tracking
+                // Issue #163: Reset phase tracking
         activePhase = RepPhase.IDLE
         phaseProgress = 0f
         lastTrackedPosition = 0f
@@ -154,8 +147,7 @@ class RepCounterFromMachine {
         shouldStop = false
         hasPendingRep = false
         pendingRepProgress = 0f
-        totalDownReps = 0  // Issue #210: Reset down counter tracking
-        // Issue #163: Reset phase tracking (but keep position history for direction detection)
+                // Issue #163: Reset phase tracking (but keep position history for direction detection)
         activePhase = RepPhase.IDLE
         phaseProgress = 0f
         lastTopCounter = null
@@ -227,6 +219,7 @@ class RepCounterFromMachine {
      * MODERN MODE (isLegacyFormat=false):
      * - Uses repsRomCount for warmup reps
      * - Uses repsSetCount for working reps
+     * - Issue #210: Uses repsRomTotal/repsSetTotal for sync verification
      * - up/down counters for visual pending feedback
      *
      * LEGACY MODE (isLegacyFormat=true, Beta 4 compatible):
@@ -234,7 +227,9 @@ class RepCounterFromMachine {
      * - This is the method that worked in Beta 4 and handles Samsung devices
      *
      * @param repsRomCount Machine's ROM rep count (warmup reps) - 0 for legacy
+     * @param repsRomTotal Machine's warmup target (bytes 18-19) - Issue #210
      * @param repsSetCount Machine's set rep count (working reps) - 0 for legacy
+     * @param repsSetTotal Machine's working target (bytes 22-23) - Issue #210
      * @param up Directional counter - increments at TOP (concentric peak)
      * @param down Directional counter - increments at BOTTOM (eccentric valley)
      * @param posA Position A for range calibration
@@ -243,16 +238,25 @@ class RepCounterFromMachine {
      */
     fun process(
         repsRomCount: Int,
+        repsRomTotal: Int = 0,  // Issue #210: Machine's warmup target
         repsSetCount: Int,
+        repsSetTotal: Int = 0,  // Issue #210: Machine's working target
         up: Int = 0,
         down: Int = 0,
         posA: Float = 0f,
         posB: Float = 0f,
         isLegacyFormat: Boolean = false
     ) {
+        // Issue #210: Sync warmupTarget with machine's repsRomTotal if provided and different
+        // This ensures our warmup tracking matches the machine's expectation
+        if (!isLegacyFormat && repsRomTotal > 0 && repsRomTotal != warmupTarget) {
+            logDebug("⚠️ WARMUP SYNC: Machine's repsRomTotal=$repsRomTotal differs from our warmupTarget=$warmupTarget - syncing")
+            warmupTarget = repsRomTotal
+        }
+
         // DIAGNOSTIC: Log full state for debugging rep counting issues
         val warmupGateOpen = warmupReps >= warmupTarget
-        logDebug("Rep process: ROM=$repsRomCount, Set=$repsSetCount, up=$up, down=$down, pending=$hasPendingRep, legacy=$isLegacyFormat")
+        logDebug("Rep process: ROM=$repsRomCount/$repsRomTotal, Set=$repsSetCount/$repsSetTotal, up=$up, down=$down, pending=$hasPendingRep, legacy=$isLegacyFormat")
         logDebug("  Warmup gate: warmupReps=$warmupReps, warmupTarget=$warmupTarget, gate=${if (warmupGateOpen) "OPEN" else "BLOCKED"}")
         logDebug("  Working: workingReps=$workingReps, workingTarget=$workingTarget")
 
@@ -337,70 +341,30 @@ class RepCounterFromMachine {
     }
 
     /**
-     * MODERN rep counting - matches official app approach.
+     * MODERN rep counting - MATCHES PARENT REPO (VitruvianRedux) EXACTLY.
      *
-     * REP COUNTING (Issue #187 fix - matches official app Yj/p.java):
+     * Issue #210 ROOT CAUSE FIX: Previous implementation used custom down counter
+     * calculations with safety nets. The parent repo simply TRUSTS THE MACHINE:
      * - warmupReps = repsRomCount (directly from machine)
-     * - workingReps calculation depends on stopAtTop setting:
-     *   - stopAtTop=false: down - warmupTarget (rep confirmed at BOTTOM)
-     *   - stopAtTop=true: up - warmupTarget (rep confirmed at TOP)
-     * - SAFETY NET: If machine's repsSetCount > our calculated workingReps, trust the machine
+     * - workingReps = repsSetCount (directly from machine)
      *
-     * The official app uses repsRomTotal (the configured target) not repsRomCount (the live counter).
-     * Using warmupTarget (our equivalent of repsRomTotal) avoids timing issues between counter updates.
+     * The machine handles warmup/working distinction internally. repsSetCount
+     * increments for WORKING reps only - trust the machine!
      *
-     * The repsSetCount fallback ensures we capture the final rep even if the machine deloads
-     * before we receive the final down counter increment.
-     *
-     * VISUAL FEEDBACK:
-     * - UP counter: triggers PENDING (grey) preview at top of rep (stopAtTop=false only)
-     * - DOWN counter: confirms rep (colored) at bottom (stopAtTop=false only)
-     * - For stopAtTop=true: rep confirmed at TOP (no pending state needed)
+     * VISUAL FEEDBACK (up/down counters are ONLY for visual feedback):
+     * - UP counter: triggers PENDING (grey) preview at top of rep
+     * - DOWN counter: clears pending state at bottom
+     * - Actual rep counting comes from repsRomCount/repsSetCount
      */
     private fun processModern(repsRomCount: Int, repsSetCount: Int, up: Int, down: Int, posA: Float, posB: Float) {
-        var upDelta = 0
-        var downDelta = 0
-
-        // Track UP movement
+        // Track UP movement - for working reps, show PENDING (grey) at TOP
         if (lastTopCounter != null) {
-            upDelta = calculateDelta(lastTopCounter!!, up)
+            val upDelta = calculateDelta(lastTopCounter!!, up)
             if (upDelta > 0) {
                 recordTopPosition(posA, posB)
 
-                // stopAtTop: Count and complete final rep at TOP
-                // Check if one rep away from target - we'll count this rep at TOP instead of waiting for bottom
-                if (stopAtTop && !isJustLift && !isAMRAP &&
-                    workingTarget > 0 && workingReps == workingTarget - 1) {
-
-                    // Count the final rep at TOP (instead of waiting for bottom)
-                    workingReps = workingTarget
-                    hasPendingRep = false
-                    activePhase = RepPhase.IDLE
-                    phaseProgress = 0f
-
-                    logDebug("💪 WORKING_COMPLETED (stopAtTop): rep $workingReps confirmed at TOP")
-
-                    onRepEvent?.invoke(
-                        RepEvent(
-                            type = RepType.WORKING_COMPLETED,
-                            warmupCount = warmupReps,
-                            workingCount = workingReps
-                        )
-                    )
-
-                    // Now complete the workout
-                    logDebug("⚠️ stopAtTop: Target reached at TOP, completing workout")
-                    shouldStop = true
-                    onRepEvent?.invoke(
-                        RepEvent(
-                            type = RepType.WORKOUT_COMPLETE,
-                            warmupCount = warmupReps,
-                            workingCount = workingReps
-                        )
-                    )
-                }
-                // Visual pending state for non-stopAtTop (show grey rep at top)
-                else if (!stopAtTop && warmupReps >= warmupTarget && !hasPendingRep) {
+                // Only show pending for WORKING reps (after warmup complete)
+                if (warmupReps >= warmupTarget && !hasPendingRep) {
                     hasPendingRep = true
                     pendingRepProgress = 0f
                     logDebug("📈 TOP - WORKING_PENDING: showing grey rep ${workingReps + 1}")
@@ -416,15 +380,18 @@ class RepCounterFromMachine {
             }
         }
 
-        // Track DOWN movement - record position at BOTTOM
-        // Issue #210: The down counter increments immediately at the bottom of each rep,
-        // BEFORE any deload logic. This makes it more reliable than repsSetCount for counting.
+        // Track DOWN movement - for working reps, CONFIRM (colored) at BOTTOM
         if (lastCompleteCounter != null) {
-            downDelta = calculateDelta(lastCompleteCounter!!, down)
+            val downDelta = calculateDelta(lastCompleteCounter!!, down)
             if (downDelta > 0) {
                 recordBottomPosition(posA, posB)
-                totalDownReps += downDelta
-                logDebug("📉 BOTTOM reached - down=$down, totalDownReps=$totalDownReps, repsRomCount=$repsRomCount")
+
+                // Clear pending state when we reach bottom
+                if (hasPendingRep) {
+                    hasPendingRep = false
+                    pendingRepProgress = 1f
+                    logDebug("📉 BOTTOM - pending cleared, waiting for machine confirm")
+                }
             }
         }
 
@@ -432,22 +399,9 @@ class RepCounterFromMachine {
         lastTopCounter = up
         lastCompleteCounter = down
 
-        // Issue #210: REP COUNTING FROM DOWN COUNTER (matches official app approach)
-        // The official app calculates: working reps = down counter - warmup count
-        // This is more reliable because the down counter updates immediately at the
-        // bottom of each rep, before any deload logic that might delay repsSetCount.
-        //
-        // We track totalDownReps (cumulative down counter deltas) and calculate:
-        // - warmupReps = min(totalDownReps, warmupTarget)
-        // - workingReps = max(0, totalDownReps - warmupTarget)
-
-        // WARMUP TRACKING: Calculate from totalDownReps
-        val calculatedWarmupReps = totalDownReps.coerceAtMost(warmupTarget)
-        if (calculatedWarmupReps > warmupReps) {
-            val oldWarmup = warmupReps
-            warmupReps = calculatedWarmupReps
-
-            logDebug("🔥 Warmup: $oldWarmup -> $warmupReps (from down counter, totalDownReps=$totalDownReps)")
+        // WARMUP TRACKING: Use repsRomCount directly from machine (no pending animation)
+        if (repsRomCount > warmupReps && warmupReps < warmupTarget) {
+            warmupReps = repsRomCount.coerceAtMost(warmupTarget)
 
             onRepEvent?.invoke(
                 RepEvent(
@@ -457,53 +411,10 @@ class RepCounterFromMachine {
                 )
             )
 
-            // Emit WARMUP_COMPLETE when reaching warmup target
-            if (warmupTarget > 0 && warmupReps >= warmupTarget && oldWarmup < warmupTarget) {
-                logDebug("🎯 Warmup complete - reached target $warmupTarget")
+            if (warmupReps >= warmupTarget) {
                 onRepEvent?.invoke(
                     RepEvent(
                         type = RepType.WARMUP_COMPLETE,
-                        warmupCount = warmupReps,
-                        workingCount = 0
-                    )
-                )
-            }
-        }
-
-        // WORKING REP TRACKING: Calculate from down counter (Issue #210 fix)
-        // working reps = totalDownReps - warmupTarget (once warmup is complete)
-        val calculatedWorkingReps = if (warmupReps >= warmupTarget) {
-            (totalDownReps - warmupTarget).coerceAtLeast(0)
-        } else {
-            0  // Still in warmup phase
-        }
-
-        if (calculatedWorkingReps > workingReps) {
-            workingReps = calculatedWorkingReps
-
-            // Clear pending state when rep is confirmed
-            hasPendingRep = false
-            activePhase = RepPhase.IDLE
-            phaseProgress = 0f
-
-            logDebug("💪 WORKING_COMPLETED: rep $workingReps (from down counter: totalDownReps=$totalDownReps - warmupTarget=$warmupTarget)")
-
-            onRepEvent?.invoke(
-                RepEvent(
-                    type = RepType.WORKING_COMPLETED,
-                    warmupCount = warmupReps,
-                    workingCount = workingReps
-                )
-            )
-
-            // Check if target reached (unless AMRAP or Just Lift or stopAtTop which handles completion at TOP)
-            if (!stopAtTop && !isJustLift && !isAMRAP && workingTarget > 0 && workingReps >= workingTarget) {
-                logDebug("⚠️ shouldStop set to TRUE (target reached)")
-                logDebug("  workingTarget=$workingTarget, workingReps=$workingReps")
-                shouldStop = true
-                onRepEvent?.invoke(
-                    RepEvent(
-                        type = RepType.WORKOUT_COMPLETE,
                         warmupCount = warmupReps,
                         workingCount = workingReps
                     )
@@ -511,16 +422,33 @@ class RepCounterFromMachine {
             }
         }
 
-        // SAFETY NET: If machine's repsSetCount is ahead of our calculation, sync up
-        // This handles edge cases where our down counter tracking might have missed something
-        if (repsSetCount > workingReps && warmupReps >= warmupTarget) {
-            logDebug("⚠️ Safety net: repsSetCount=$repsSetCount > workingReps=$workingReps, syncing")
+        // WORKING REP TRACKING: Use repsSetCount directly from machine
+        // NOTE: The machine handles warmup/working distinction internally.
+        // repsSetCount increments for WORKING reps only - trust the machine!
+        // We still track warmupReps for UI display, but don't gate on it.
+        // The machine won't increment repsSetCount until warmup is complete.
+        if (repsSetCount > workingReps) {
+            // If machine is reporting working reps but we haven't seen warmup complete,
+            // force our warmup tracking to match (machine knows best)
+            if (warmupReps < warmupTarget) {
+                logDebug("Machine reports working reps (repsSetCount=$repsSetCount) - warmup must be complete")
+                warmupReps = warmupTarget
+                onRepEvent?.invoke(
+                    RepEvent(
+                        type = RepType.WARMUP_COMPLETE,
+                        warmupCount = warmupReps,
+                        workingCount = workingReps
+                    )
+                )
+            }
             workingReps = repsSetCount
 
-            // Clear pending state when rep is confirmed via safety net
+            // Clear pending/phase state when rep confirmed
             hasPendingRep = false
             activePhase = RepPhase.IDLE
             phaseProgress = 0f
+
+            logDebug("💪 WORKING_COMPLETED: rep $workingReps confirmed (colored)")
 
             onRepEvent?.invoke(
                 RepEvent(
@@ -530,11 +458,9 @@ class RepCounterFromMachine {
                 )
             )
 
-            // Issue #210: CRITICAL - Check if safety net sync means target is now reached
-            // Previously this check was missing, causing sets to never complete when the
-            // final rep was detected via repsSetCount rather than the down counter.
-            if (!stopAtTop && !isJustLift && !isAMRAP && workingTarget > 0 && workingReps >= workingTarget) {
-                logDebug("⚠️ Safety net: shouldStop set to TRUE (target reached via repsSetCount)")
+            // Check if target reached (unless AMRAP or Just Lift)
+            if (!isJustLift && !isAMRAP && workingTarget > 0 && workingReps >= workingTarget) {
+                logDebug("⚠️ shouldStop set to TRUE (target reached)")
                 logDebug("  workingTarget=$workingTarget, workingReps=$workingReps")
                 shouldStop = true
                 onRepEvent?.invoke(
