@@ -459,6 +459,9 @@ class MainViewModel constructor(
     private var skipCountdownRequested: Boolean = false
     // Track if current workout is duration-based (timed exercise) to show countdown timer
     private var isCurrentWorkoutTimed: Boolean = false
+    // Issue #231: Track pending duration timer for timed cable exercises
+    // Timer should start AFTER warmup reps complete, not immediately at Active state
+    private var pendingTimedCableDurationSeconds: Int? = null
     // Track if current exercise is bodyweight to skip rep processing (no cable engagement)
     private val _isCurrentExerciseBodyweight = MutableStateFlow(false)
     val isCurrentExerciseBodyweight: StateFlow<Boolean> = _isCurrentExerciseBodyweight.asStateFlow()
@@ -515,7 +518,25 @@ class MainViewModel constructor(
                          }
                      }
                      RepType.WARMUP_COMPLETED -> _hapticEvents.emit(HapticEvent.REP_COMPLETED)
-                     RepType.WARMUP_COMPLETE -> _hapticEvents.emit(HapticEvent.WARMUP_COMPLETE)
+                     RepType.WARMUP_COMPLETE -> {
+                         _hapticEvents.emit(HapticEvent.WARMUP_COMPLETE)
+                         // Issue #231: Start duration timer for timed cable exercises AFTER warmup completes
+                         val pendingDuration = pendingTimedCableDurationSeconds
+                         if (pendingDuration != null) {
+                             Logger.d { "Issue231: Warmup complete - starting ${pendingDuration}s duration timer for timed cable exercise" }
+                             pendingTimedCableDurationSeconds = null
+                             bodyweightTimerJob?.cancel()
+                             bodyweightTimerJob = viewModelScope.launch {
+                                 _timedExerciseRemainingSeconds.value = pendingDuration
+                                 for (remaining in pendingDuration downTo 1) {
+                                     _timedExerciseRemainingSeconds.value = remaining
+                                     delay(1000L)
+                                 }
+                                 _timedExerciseRemainingSeconds.value = 0
+                                 handleSetCompletion()
+                             }
+                         }
+                     }
                      RepType.WORKOUT_COMPLETE -> {
                          // Note: WORKOUT_COMPLETE sound removed - WORKOUT_END in handleSetCompletion
                          // provides sufficient feedback, and celebration sounds (PR/badge) may also play.
@@ -1004,9 +1025,18 @@ class MainViewModel constructor(
             }
 
             val effectiveWarmupReps = Constants.DEFAULT_WARMUP_REPS
-            val effectiveParams = if (params.warmupReps != effectiveWarmupReps) {
-                Logger.d("MainViewModel") { "Issue #222: Forcing warmupReps=$effectiveWarmupReps for cable exercise (was ${params.warmupReps})" }
-                val updated = params.copy(warmupReps = effectiveWarmupReps)
+            // Issue #231: Timed cable exercises need a high rep count so the duration timer
+            // controls set completion, not the rep counter. Without this, the machine auto-stops
+            // at the configured rep count (e.g., 10) before the timer expires.
+            val effectiveReps = if (isTimedCableExercise) {
+                Logger.d("MainViewModel") { "Issue231: Forcing reps=${Constants.DEFAULT_DURATION_EXERCISE_REPS} for timed cable exercise (was ${params.reps})" }
+                Constants.DEFAULT_DURATION_EXERCISE_REPS
+            } else {
+                params.reps
+            }
+            val effectiveParams = if (params.warmupReps != effectiveWarmupReps || params.reps != effectiveReps) {
+                Logger.d("MainViewModel") { "Issue #222/#231: Adjusting params - warmupReps=$effectiveWarmupReps (was ${params.warmupReps}), reps=$effectiveReps (was ${params.reps})" }
+                val updated = params.copy(warmupReps = effectiveWarmupReps, reps = effectiveReps)
                 _workoutParameters.value = updated
                 updated
             } else {
@@ -1144,19 +1174,14 @@ class MainViewModel constructor(
             collectedMetrics.clear()  // Clear metrics from previous workout
             _hapticEvents.emit(HapticEvent.WORKOUT_START)
 
-            // For timed cable exercises, start auto-complete timer with countdown display
-            // Issue #192: Show countdown timer in UI during timed exercises
+            // Issue #231: For timed cable exercises, defer timer start until warmup reps complete.
+            // The machine does warmup reps first (default 3), and the duration timer should
+            // only start counting down AFTER the last warmup rep finishes.
+            // The WARMUP_COMPLETE event handler will pick up pendingTimedCableDurationSeconds
+            // and start the actual countdown timer.
             if (isTimedCableExercise && exerciseDuration != null) {
-                bodyweightTimerJob?.cancel()
-                bodyweightTimerJob = viewModelScope.launch {
-                    _timedExerciseRemainingSeconds.value = exerciseDuration
-                    for (remaining in exerciseDuration downTo 1) {
-                        _timedExerciseRemainingSeconds.value = remaining
-                        delay(1000L)
-                    }
-                    _timedExerciseRemainingSeconds.value = 0
-                    handleSetCompletion()
-                }
+                Logger.d { "Issue231: Timed cable exercise detected - deferring ${exerciseDuration}s timer until warmup completes" }
+                pendingTimedCableDurationSeconds = exerciseDuration
             }
 
             // Set initial baseline position for position bars calibration
@@ -1226,6 +1251,7 @@ class MainViewModel constructor(
         viewModelScope.launch {
             // Reset timed workout flag
             isCurrentWorkoutTimed = false
+            pendingTimedCableDurationSeconds = null  // Issue #231: Clear pending timer
             _isCurrentExerciseBodyweight.value = false
 
              // Manual stop: match parent behavior (skip BLE stop for bodyweight)
@@ -3496,6 +3522,7 @@ class MainViewModel constructor(
 
             // Reset timed workout flag
             isCurrentWorkoutTimed = false
+            pendingTimedCableDurationSeconds = null  // Issue #231: Clear pending timer
             _isCurrentExerciseBodyweight.value = false
 
             // Track if this was a bodyweight exercise (for UI decisions like skipping summary)
