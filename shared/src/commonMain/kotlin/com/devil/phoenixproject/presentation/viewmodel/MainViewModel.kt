@@ -459,6 +459,8 @@ class MainViewModel constructor(
     private var skipCountdownRequested: Boolean = false
     // Track if current workout is duration-based (timed exercise) to show countdown timer
     private var isCurrentWorkoutTimed: Boolean = false
+    // Track if current exercise is a timed CABLE exercise (not bodyweight) for auto-stop via handle release
+    private var isCurrentTimedCableExercise: Boolean = false
     // Track if current exercise is bodyweight to skip rep processing (no cable engagement)
     private val _isCurrentExerciseBodyweight = MutableStateFlow(false)
     val isCurrentExerciseBodyweight: StateFlow<Boolean> = _isCurrentExerciseBodyweight.asStateFlow()
@@ -600,8 +602,9 @@ class MainViewModel constructor(
                 val params = _workoutParameters.value
                 val currentState = _workoutState.value
 
-                // Only trigger auto-stop in Just Lift or AMRAP modes when workout is active
-                if ((params.isJustLift || params.isAMRAP) && currentState is WorkoutState.Active) {
+                // Only trigger auto-stop in Just Lift, AMRAP, or timed cable modes when workout is active
+                // Duration cable exercises should auto-stop when user puts handles down (like AMRAP)
+                if ((params.isJustLift || params.isAMRAP || isCurrentTimedCableExercise) && currentState is WorkoutState.Active) {
                     Logger.d("🛑 DELOAD_OCCURRED: Machine detected cable release - starting auto-stop timer")
 
                     // Issue #204: Don't start stall timer during AMRAP startup grace period
@@ -794,8 +797,8 @@ class MainViewModel constructor(
             // For standard workouts, we rely on rep-based tracking (recordTopPosition/recordBottomPosition)
             // which uses sliding window averaging for better accuracy (matches parent repo).
             // Issue #221: Debug logging for position tracking condition
-            Logger.d { "Issue221: handleMonitorMetric Active - isJustLift=${params.isJustLift}, isAMRAP=${params.isAMRAP}, posA=${metric.positionA}, posB=${metric.positionB}" }
-            if (params.isJustLift || params.isAMRAP) {
+            Logger.d { "Issue221: handleMonitorMetric Active - isJustLift=${params.isJustLift}, isAMRAP=${params.isAMRAP}, isTimedCable=$isCurrentTimedCableExercise, posA=${metric.positionA}, posB=${metric.positionB}" }
+            if (params.isJustLift || params.isAMRAP || isCurrentTimedCableExercise) {
                 Logger.d { "Issue221: Calling updatePositionRangesContinuously" }
                 repCounter.updatePositionRangesContinuously(metric.positionA, metric.positionB)
             }
@@ -807,12 +810,13 @@ class MainViewModel constructor(
             // Update rep ranges for position bar ROM visualization
             _repRanges.value = repCounter.getRepRanges()
 
-            // Just Lift / AMRAP Auto-Stop
+            // Just Lift / AMRAP / Duration Cable Auto-Stop
             // Always call checkAutoStop for position-based detection.
             // Stall (velocity) detection inside is gated by stallDetectionEnabled.
+            // Duration cable exercises auto-stop when user puts handles down (like AMRAP).
             // Issue #203: Debug logging to track auto-stop check conditions
-            if (params.isJustLift || params.isAMRAP) {
-                Logger.d { "Issue203 DEBUG: checkAutoStop called - isJustLift=${params.isJustLift}, isAMRAP=${params.isAMRAP}, setIndex=${_currentSetIndex.value}" }
+            if (params.isJustLift || params.isAMRAP || isCurrentTimedCableExercise) {
+                Logger.d { "Issue203 DEBUG: checkAutoStop called - isJustLift=${params.isJustLift}, isAMRAP=${params.isAMRAP}, isTimedCable=$isCurrentTimedCableExercise, setIndex=${_currentSetIndex.value}" }
                 checkAutoStop(metric)
             } else {
                 resetAutoStopTimer()
@@ -918,6 +922,7 @@ class MainViewModel constructor(
             // Track if this is a timed cable exercise (not bodyweight, but has duration)
             val isTimedCableExercise = !isBodyweight && exerciseDuration != null
             isCurrentWorkoutTimed = exerciseDuration != null
+            isCurrentTimedCableExercise = isTimedCableExercise
             _isCurrentExerciseBodyweight.value = isBodyweight
 
             // Issue #227: Detailed logging to trace exercise type detection
@@ -1043,22 +1048,33 @@ class MainViewModel constructor(
             println("Issue188: ║ stallDetection: ${effectiveParams.stallDetectionEnabled}")
             println("Issue188: ╚══════════════════════════════════════════════════════════════")
 
+            // Duration cable exercises should behave like AMRAP to the machine:
+            // - No rep limit sent (0xFF) so machine doesn't terminate exercise early
+            // - App-side rep counter also set to unlimited (workingTarget=0)
+            // - Exercise ends via duration timer OR user putting handles down
+            val bleParams = if (isTimedCableExercise) {
+                Logger.d { "Duration cable: overriding isAMRAP=true for BLE command (prevents machine rep limit)" }
+                effectiveParams.copy(isAMRAP = true)
+            } else {
+                effectiveParams
+            }
+
             // 1. Build Command - Use full 96-byte PROGRAM params (matches parent repo)
-            val command = if (effectiveParams.isEchoMode) {
+            val command = if (bleParams.isEchoMode) {
                 // 32-byte Echo control frame
                 BlePacketFactory.createEchoControl(
-                    level = effectiveParams.echoLevel,
-                    warmupReps = effectiveParams.warmupReps,
-                    targetReps = effectiveParams.reps,
-                    isJustLift = isJustLiftMode || effectiveParams.isJustLift,
-                    isAMRAP = effectiveParams.isAMRAP,
-                    eccentricPct = effectiveParams.eccentricLoad.percentage
+                    level = bleParams.echoLevel,
+                    warmupReps = bleParams.warmupReps,
+                    targetReps = bleParams.reps,
+                    isJustLift = isJustLiftMode || bleParams.isJustLift,
+                    isAMRAP = bleParams.isAMRAP,
+                    eccentricPct = bleParams.eccentricLoad.percentage
                 )
             } else {
                 // Full 96-byte program frame with mode profile, weight, progression
-                BlePacketFactory.createProgramParams(effectiveParams)
+                BlePacketFactory.createProgramParams(bleParams)
             }
-            Logger.d { "Built ${command.size}-byte workout command for ${effectiveParams.programMode}" }
+            Logger.d { "Built ${command.size}-byte workout command for ${bleParams.programMode}" }
 
             // NOTE: CONFIG and START commands are now sent AFTER countdown (see below).
             // User testing confirmed that CONFIG itself activates the machine and starts
@@ -1080,12 +1096,15 @@ class MainViewModel constructor(
                 repCounter.reset()
             }
             // Only bodyweight exercises should have warmup reps = 0
+            // Duration cable exercises: workingTarget=0 and isAMRAP=true to prevent
+            // app-side auto-stop when rep count reaches target. The duration timer
+            // handles exercise completion instead.
             repCounter.configure(
                 warmupTarget = effectiveParams.warmupReps,
-                workingTarget = effectiveParams.reps,
+                workingTarget = if (isTimedCableExercise) 0 else effectiveParams.reps,
                 isJustLift = isJustLiftMode,
                 stopAtTop = effectiveParams.stopAtTop,
-                isAMRAP = effectiveParams.isAMRAP
+                isAMRAP = if (isTimedCableExercise) true else effectiveParams.isAMRAP
             )
 
             // Log timed cable exercise detection
@@ -1146,9 +1165,22 @@ class MainViewModel constructor(
 
             // For timed cable exercises, start auto-complete timer with countdown display
             // Issue #192: Show countdown timer in UI during timed exercises
+            // Duration cable fix: Wait for warmup to complete before starting duration timer.
+            // During warmup, UI shows warmup rep counter. Once warmup completes,
+            // the duration timer starts counting down. This matches the expected flow:
+            // warmup phase -> duration countdown -> auto-complete (or user puts handles down).
             if (isTimedCableExercise && exerciseDuration != null) {
                 bodyweightTimerJob?.cancel()
                 bodyweightTimerJob = viewModelScope.launch {
+                    // Wait for warmup to complete before starting the duration countdown.
+                    // The warmup rep counter will display during this phase.
+                    if (effectiveParams.warmupReps > 0) {
+                        Logger.d { "Duration cable: waiting for ${effectiveParams.warmupReps} warmup reps before starting ${exerciseDuration}s timer" }
+                        _repCount.first { it.isWarmupComplete }
+                        Logger.d { "Duration cable: warmup complete, starting ${exerciseDuration}s duration timer" }
+                    }
+
+                    // Now start the duration countdown
                     _timedExerciseRemainingSeconds.value = exerciseDuration
                     for (remaining in exerciseDuration downTo 1) {
                         _timedExerciseRemainingSeconds.value = remaining
@@ -1226,6 +1258,7 @@ class MainViewModel constructor(
         viewModelScope.launch {
             // Reset timed workout flag
             isCurrentWorkoutTimed = false
+            isCurrentTimedCableExercise = false
             _isCurrentExerciseBodyweight.value = false
 
              // Manual stop: match parent behavior (skip BLE stop for bodyweight)
@@ -3456,7 +3489,7 @@ class MainViewModel constructor(
         autoStopTriggered = true
 
         // Update UI state
-        if (_workoutParameters.value.isJustLift || _workoutParameters.value.isAMRAP) {
+        if (_workoutParameters.value.isJustLift || _workoutParameters.value.isAMRAP || isCurrentTimedCableExercise) {
             _autoStopState.value = _autoStopState.value.copy(
                 progress = 1f,
                 secondsRemaining = 0,
@@ -3496,6 +3529,7 @@ class MainViewModel constructor(
 
             // Reset timed workout flag
             isCurrentWorkoutTimed = false
+            isCurrentTimedCableExercise = false
             _isCurrentExerciseBodyweight.value = false
 
             // Track if this was a bodyweight exercise (for UI decisions like skipping summary)
