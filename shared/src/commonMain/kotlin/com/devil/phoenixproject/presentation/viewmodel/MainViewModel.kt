@@ -19,10 +19,8 @@ import com.devil.phoenixproject.domain.usecase.RepCounterFromMachine
 import com.devil.phoenixproject.data.sync.SyncTriggerManager
 import com.devil.phoenixproject.domain.usecase.ResolveRoutineWeightsUseCase
 import com.devil.phoenixproject.util.BlePacketFactory
-import com.devil.phoenixproject.util.KmpLocalDate
 import com.devil.phoenixproject.util.Constants
 import com.devil.phoenixproject.util.KmpUtils
-import com.devil.phoenixproject.util.format
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -30,7 +28,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,32 +37,21 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.take
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.math.ceil
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.devil.phoenixproject.presentation.manager.HistoryManager
+import com.devil.phoenixproject.presentation.manager.HistoryItem
+import com.devil.phoenixproject.presentation.manager.GroupedRoutineHistoryItem
+import com.devil.phoenixproject.presentation.manager.SingleSessionHistoryItem
+import com.devil.phoenixproject.presentation.manager.SettingsManager
+import com.devil.phoenixproject.presentation.manager.BleConnectionManager
+import com.devil.phoenixproject.presentation.manager.WorkoutStateProvider
+import com.devil.phoenixproject.presentation.manager.GamificationManager
 
-/**
- * Sealed class hierarchy for workout history items
- */
-sealed class HistoryItem {
-    abstract val timestamp: Long
-}
-
-data class SingleSessionHistoryItem(val session: WorkoutSession) : HistoryItem() {
-    override val timestamp: Long = session.timestamp
-}
-
-data class GroupedRoutineHistoryItem(
-    val routineSessionId: String,
-    val routineName: String,
-    val sessions: List<WorkoutSession>,
-    val totalDuration: Long,
-    val totalReps: Int,
-    val exerciseCount: Int,
-    override val timestamp: Long
-) : HistoryItem()
+// HistoryItem, SingleSessionHistoryItem, GroupedRoutineHistoryItem moved to
+// com.devil.phoenixproject.presentation.manager.HistoryManager
 
 /**
  * Represents a dynamic action for the top app bar.
@@ -87,7 +73,14 @@ class MainViewModel constructor(
     private val trainingCycleRepository: TrainingCycleRepository,
     private val syncTriggerManager: SyncTriggerManager? = null,
     private val resolveWeightsUseCase: ResolveRoutineWeightsUseCase
-) : ViewModel() {
+) : ViewModel(), WorkoutStateProvider {
+
+    // WorkoutStateProvider implementation for BleConnectionManager
+    override val isWorkoutActiveForConnectionAlert: Boolean
+        get() = when (_workoutState.value) {
+            is WorkoutState.Active, is WorkoutState.Countdown, is WorkoutState.Resting -> true
+            else -> false
+        }
 
     companion object {
         /** Prefix for temporary single exercise routines to identify them for cleanup */
@@ -125,7 +118,30 @@ class MainViewModel constructor(
         const val AMRAP_STARTUP_GRACE_MS = 8000L
     }
 
-    val connectionState: StateFlow<ConnectionState> = bleRepository.connectionState
+    // Haptic events shared flow - declared early because GamificationManager needs it
+    private val _hapticEvents = MutableSharedFlow<HapticEvent>(
+        extraBufferCapacity = 10,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
+    val hapticEvents: SharedFlow<HapticEvent> = _hapticEvents.asSharedFlow()
+
+    // === Phase 1a: HistoryManager (extracted from this class) ===
+    val historyManager = HistoryManager(workoutRepository, personalRecordRepository, viewModelScope)
+
+    // === Phase 1b: SettingsManager (extracted from this class) ===
+    val settingsManager = SettingsManager(preferencesManager, bleRepository, viewModelScope)
+
+    // === Phase 2a: BleConnectionManager (extracted from this class) ===
+    val bleConnectionManager = BleConnectionManager(bleRepository, settingsManager, this, viewModelScope)
+
+    // === Phase 2b: GamificationManager (extracted from this class) ===
+    val gamificationManager = GamificationManager(
+        gamificationRepository, personalRecordRepository, exerciseRepository,
+        _hapticEvents, viewModelScope
+    )
+
+    // Connection state - delegated to BleConnectionManager
+    val connectionState: StateFlow<ConnectionState> get() = bleConnectionManager.connectionState
 
     private val _workoutState = MutableStateFlow<WorkoutState>(WorkoutState.Idle)
     val workoutState: StateFlow<WorkoutState> = _workoutState.asStateFlow()
@@ -195,11 +211,9 @@ class MainViewModel constructor(
     private val _autoStartCountdown = MutableStateFlow<Int?>(null)
     val autoStartCountdown: StateFlow<Int?> = _autoStartCountdown.asStateFlow()
 
-    private val _scannedDevices = MutableStateFlow<List<ScannedDevice>>(emptyList())
-    val scannedDevices: StateFlow<List<ScannedDevice>> = _scannedDevices.asStateFlow()
+    val scannedDevices: StateFlow<List<ScannedDevice>> get() = bleConnectionManager.scannedDevices
 
-    private val _workoutHistory = MutableStateFlow<List<WorkoutSession>>(emptyList())
-    val workoutHistory: StateFlow<List<WorkoutSession>> = _workoutHistory.asStateFlow()
+    val workoutHistory: StateFlow<List<WorkoutSession>> get() = historyManager.workoutHistory
 
     // Top Bar Title State
     private val _topBarTitle = MutableStateFlow("Project Phoenix")
@@ -233,36 +247,16 @@ class MainViewModel constructor(
         _topBarBackAction.value = null
     }
 
-    // PR Celebration Events
-    private val _prCelebrationEvent = MutableSharedFlow<PRCelebrationEvent>()
-    val prCelebrationEvent: SharedFlow<PRCelebrationEvent> = _prCelebrationEvent.asSharedFlow()
+    // PR/Badge events - delegated to GamificationManager
+    val prCelebrationEvent: SharedFlow<PRCelebrationEvent> get() = gamificationManager.prCelebrationEvent
+    val badgeEarnedEvents: SharedFlow<List<Badge>> get() = gamificationManager.badgeEarnedEvents
 
-    // Badge Earned Events
-    private val _badgeEarnedEvents = MutableSharedFlow<List<Badge>>()
-    val badgeEarnedEvents: SharedFlow<List<Badge>> = _badgeEarnedEvents.asSharedFlow()
-
-    // User preferences
-    val userPreferences: StateFlow<UserPreferences> = preferencesManager.preferencesFlow
-        .stateIn(viewModelScope, SharingStarted.Eagerly, UserPreferences())
-
-    val weightUnit: StateFlow<WeightUnit> = userPreferences
-        .map { it.weightUnit }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, WeightUnit.KG)
-
-    val stopAtTop: StateFlow<Boolean> = userPreferences
-        .map { it.stopAtTop }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
-
-    val enableVideoPlayback: StateFlow<Boolean> = userPreferences
-        .map { it.enableVideoPlayback }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
-
-    // Issue #167: Autoplay is now derived from summaryCountdownSeconds
-    // - summaryCountdownSeconds == 0 (Unlimited) = autoplay OFF (manual control)
-    // - summaryCountdownSeconds != 0 (-1 or 5-30) = autoplay ON (auto-advance)
-    val autoplayEnabled: StateFlow<Boolean> = userPreferences
-        .map { it.summaryCountdownSeconds != 0 }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+    // User preferences - delegated to SettingsManager
+    val userPreferences: StateFlow<UserPreferences> get() = settingsManager.userPreferences
+    val weightUnit: StateFlow<WeightUnit> get() = settingsManager.weightUnit
+    val stopAtTop: StateFlow<Boolean> get() = settingsManager.stopAtTop
+    val enableVideoPlayback: StateFlow<Boolean> get() = settingsManager.enableVideoPlayback
+    val autoplayEnabled: StateFlow<Boolean> get() = settingsManager.autoplayEnabled
 
     // Feature 4: Routine Management
     private val _routines = MutableStateFlow<List<Routine>>(emptyList())
@@ -292,120 +286,27 @@ class MainViewModel constructor(
     private val _currentSetRpe = MutableStateFlow<Int?>(null)
     val currentSetRpe: StateFlow<Int?> = _currentSetRpe.asStateFlow()
 
-    // Personal Records
+    // Personal Records - delegated to HistoryManager
     @Suppress("unused")
-    val personalBests: StateFlow<List<com.devil.phoenixproject.data.repository.PersonalRecordEntity>> =
-        workoutRepository.getAllPersonalRecords()
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000),
-                initialValue = emptyList()
-            )
+    val personalBests: StateFlow<List<com.devil.phoenixproject.data.repository.PersonalRecordEntity>>
+        get() = historyManager.personalBests
 
-    // ========== Stats for HomeScreen ==========
-
-    val allWorkoutSessions: StateFlow<List<WorkoutSession>> =
-        workoutRepository.getAllSessions()
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000),
-                initialValue = emptyList()
-            )
-
-    val groupedWorkoutHistory: StateFlow<List<HistoryItem>> = allWorkoutSessions.map { sessions ->
-        val groupedByRoutine = sessions.filter { it.routineSessionId != null }
-            .groupBy { it.routineSessionId!! }
-            .map { (id, sessionList) ->
-                GroupedRoutineHistoryItem(
-                    routineSessionId = id,
-                    routineName = sessionList.first().routineName ?: "Unnamed Routine",
-                    sessions = sessionList.sortedBy { it.timestamp },
-                    totalDuration = sessionList.sumOf { it.duration },
-                    totalReps = sessionList.sumOf { it.totalReps },
-                    exerciseCount = sessionList.mapNotNull { it.exerciseId }.distinct().count(),
-                    timestamp = sessionList.minOf { it.timestamp }
-                )
-            }
-        val singleSessions = sessions.filter { it.routineSessionId == null }
-            .map { SingleSessionHistoryItem(it) }
-
-        (groupedByRoutine + singleSessions).sortedByDescending { it.timestamp }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val allPersonalRecords: StateFlow<List<PersonalRecord>> =
-        personalRecordRepository.getAllPRsGrouped()
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000),
-                initialValue = emptyList()
-            )
-
-    val completedWorkouts: StateFlow<Int?> = allWorkoutSessions.map { sessions ->
-        sessions.size.takeIf { it > 0 }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-    /**
-     * Calculate current workout streak (consecutive days with workouts).
-     * Returns null if no workouts or streak is broken.
-     */
-    val workoutStreak: StateFlow<Int?> = allWorkoutSessions.map { sessions ->
-        if (sessions.isEmpty()) {
-            return@map null
-        }
-
-        // Get unique workout dates, sorted descending (most recent first)
-        val workoutDates = sessions
-            .map { KmpLocalDate.fromTimestamp(it.timestamp) }
-            .distinctBy { it.toKey() }
-            .sortedDescending()
-
-        val today = KmpLocalDate.today()
-        val lastWorkoutDate = workoutDates.first()
-
-        // Check if streak is current (workout today or yesterday)
-        if (lastWorkoutDate.isBefore(today.minusDays(1))) {
-            return@map null // Streak broken - no workout today or yesterday
-        }
-
-        // Count consecutive days
-        var streak = 1
-        for (i in 1 until workoutDates.size) {
-            val expected = workoutDates[i - 1].minusDays(1)
-            if (workoutDates[i] == expected) {
-                streak++
-            } else {
-                break // Found a gap
-            }
-        }
-        streak
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-    val progressPercentage: StateFlow<Int?> = allWorkoutSessions.map { sessions ->
-        if (sessions.size < 2) return@map null
-        val latest = sessions[0]
-        val previous = sessions[1]
-        val latestVol = (latest.weightPerCableKg * 2) * latest.totalReps
-        val prevVol = (previous.weightPerCableKg * 2) * previous.totalReps
-        if (prevVol <= 0f) return@map null
-        ((latestVol - prevVol) / prevVol * 100).toInt()
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    // ========== Stats for HomeScreen (delegated to HistoryManager) ==========
+    val allWorkoutSessions: StateFlow<List<WorkoutSession>> get() = historyManager.allWorkoutSessions
+    val groupedWorkoutHistory: StateFlow<List<HistoryItem>> get() = historyManager.groupedWorkoutHistory
+    val allPersonalRecords: StateFlow<List<PersonalRecord>> get() = historyManager.allPersonalRecords
+    val completedWorkouts: StateFlow<Int?> get() = historyManager.completedWorkouts
+    val workoutStreak: StateFlow<Int?> get() = historyManager.workoutStreak
+    val progressPercentage: StateFlow<Int?> get() = historyManager.progressPercentage
 
     private val _isWorkoutSetupDialogVisible = MutableStateFlow(false)
     val isWorkoutSetupDialogVisible: StateFlow<Boolean> = _isWorkoutSetupDialogVisible.asStateFlow()
 
-    private val _isAutoConnecting = MutableStateFlow(false)
-    val isAutoConnecting: StateFlow<Boolean> = _isAutoConnecting.asStateFlow()
+    // Connection state - delegated to BleConnectionManager
+    val isAutoConnecting: StateFlow<Boolean> get() = bleConnectionManager.isAutoConnecting
+    val connectionError: StateFlow<String?> get() = bleConnectionManager.connectionError
 
-    private val _connectionError = MutableStateFlow<String?>(null)
-    val connectionError: StateFlow<String?> = _connectionError.asStateFlow()
-
-    private var _pendingConnectionCallback: (() -> Unit)? = null
-
-    private val _hapticEvents = MutableSharedFlow<HapticEvent>(
-        extraBufferCapacity = 10,
-        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
-    )
-    val hapticEvents: SharedFlow<HapticEvent> = _hapticEvents.asSharedFlow()
+    // _hapticEvents and hapticEvents moved above manager declarations
 
     // Issue #172: User feedback events for navigation/UI messages
     private val _userFeedbackEvents = MutableSharedFlow<String>(
@@ -414,8 +315,7 @@ class MainViewModel constructor(
     )
     val userFeedbackEvents: SharedFlow<String> = _userFeedbackEvents.asSharedFlow()
 
-    private val _connectionLostDuringWorkout = MutableStateFlow(false)
-    val connectionLostDuringWorkout: StateFlow<Boolean> = _connectionLostDuringWorkout.asStateFlow()
+    val connectionLostDuringWorkout: StateFlow<Boolean> get() = bleConnectionManager.connectionLostDuringWorkout
 
     private var currentSessionId: String? = null
     private var workoutStartTime: Long = 0
@@ -443,7 +343,7 @@ class MainViewModel constructor(
     private var stallStartTime: Long? = null
     private var isCurrentlyStalled = false
 
-    private var connectionJob: Job? = null
+    // connectionJob moved to BleConnectionManager
     private var monitorDataCollectionJob: Job? = null
     private var autoStartJob: Job? = null
     private var restTimerJob: Job? = null
@@ -479,12 +379,7 @@ class MainViewModel constructor(
     init {
         Logger.d("MainViewModel initialized")
 
-        // Load recent history
-        viewModelScope.launch {
-            workoutRepository.getAllSessions().collect { sessions ->
-                _workoutHistory.value = sessions.take(20)
-            }
-        }
+        // Load recent history - now handled by HistoryManager
 
         // Load routines (filter out cycle template routines that shouldn't show in Daily Routines)
         viewModelScope.launch {
@@ -681,46 +576,7 @@ class MainViewModel constructor(
             }
         }
 
-        // Connection state observer for detecting connection loss during workout (Issue #42)
-        // When connection is lost during an active workout, show the ConnectionLostDialog
-        viewModelScope.launch {
-            var wasConnected = false
-            bleRepository.connectionState.collect { state ->
-                when (state) {
-                    is ConnectionState.Connected -> {
-                        wasConnected = true
-                        // Clear any previous connection lost alert when reconnected
-                        _connectionLostDuringWorkout.value = false
-                        // Issue #179: Initialize LED color scheme on connection
-                        val savedColorScheme = userPreferences.value.colorScheme
-                        bleRepository.setColorScheme(savedColorScheme)
-                        Logger.d { "Initialized LED color scheme to saved preference: $savedColorScheme" }
-                    }
-                    is ConnectionState.Disconnected, is ConnectionState.Error -> {
-                        // Only trigger alert if we were previously connected
-                        // and a workout is actively in progress (not in summary)
-                        // SetSummary is excluded since the summary screen doesn't need connection
-                        // and users need to interact with it to save workout history
-                        if (wasConnected) {
-                            val workoutActive = when (_workoutState.value) {
-                                is WorkoutState.Active,
-                                is WorkoutState.Countdown,
-                                is WorkoutState.Resting -> true
-                                else -> false
-                            }
-                            if (workoutActive) {
-                                Logger.w { "Connection lost during active workout! Showing reconnection dialog." }
-                                _connectionLostDuringWorkout.value = true
-                            }
-                        }
-                        wasConnected = false
-                    }
-                    else -> {
-                        // Scanning, Connecting - don't change wasConnected or alert state
-                    }
-                }
-            }
-        }
+        // Connection state observer moved to BleConnectionManager
     }
 
     /**
@@ -844,39 +700,12 @@ class MainViewModel constructor(
         collectedMetrics.add(metric)
     }
 
-    fun startScanning() {
-        viewModelScope.launch { bleRepository.startScanning() }
-    }
-
-    fun stopScanning() {
-        viewModelScope.launch { bleRepository.stopScanning() }
-    }
-
-    fun cancelScanOrConnection() {
-        viewModelScope.launch {
-            bleRepository.stopScanning()
-            // Only cancel connection if we're actually connecting
-            val state = connectionState.value
-            if (state is ConnectionState.Connecting) {
-                bleRepository.cancelConnection()
-            }
-        }
-    }
-
-    fun connectToDevice(deviceAddress: String) {
-        viewModelScope.launch {
-            val device = scannedDevices.value.find { it.address == deviceAddress }
-            if (device != null) {
-                bleRepository.connect(device)
-            } else {
-                Logger.e { "Device not found in scanned devices: $deviceAddress" }
-            }
-        }
-    }
-
-    fun disconnect() {
-        viewModelScope.launch { bleRepository.disconnect() }
-    }
+    // Scanning/connection functions - delegated to BleConnectionManager
+    fun startScanning() = bleConnectionManager.startScanning()
+    fun stopScanning() = bleConnectionManager.stopScanning()
+    fun cancelScanOrConnection() = bleConnectionManager.cancelScanOrConnection()
+    fun connectToDevice(deviceAddress: String) = bleConnectionManager.connectToDevice(deviceAddress)
+    fun disconnect() = bleConnectionManager.disconnect()
 
     fun updateWorkoutParameters(params: WorkoutParameters) {
         // Issue #170/#180: Track if user edits parameters during Idle, Resting, or SetSummary
@@ -1139,7 +968,7 @@ class MainViewModel constructor(
                 Logger.d { "Config preview: $preview ..." }
             } catch (e: Exception) {
                 Logger.e(e) { "Failed to send config command" }
-                _connectionError.value = "Failed to send command: ${e.message}"
+                bleConnectionManager.setConnectionError("Failed to send command: ${e.message}")
                 return@launch
             }
 
@@ -1153,7 +982,7 @@ class MainViewModel constructor(
                     Logger.i { "START command sent (0x03)" }
                 } catch (e: Exception) {
                     Logger.e(e) { "Failed to send START command" }
-                    _connectionError.value = "Failed to start workout: ${e.message}"
+                    bleConnectionManager.setConnectionError("Failed to start workout: ${e.message}")
                     return@launch
                 }
             }
@@ -1456,45 +1285,15 @@ class MainViewModel constructor(
         }
     }
 
-    fun setWeightUnit(unit: WeightUnit) {
-        viewModelScope.launch { preferencesManager.setWeightUnit(unit) }
-    }
-
-    fun setStopAtTop(enabled: Boolean) {
-        viewModelScope.launch { preferencesManager.setStopAtTop(enabled) }
-    }
-
-    fun setEnableVideoPlayback(enabled: Boolean) {
-        viewModelScope.launch { preferencesManager.setEnableVideoPlayback(enabled) }
-    }
-
-    // Issue #167: setAutoplayEnabled removed - autoplay now derived from summaryCountdownSeconds
-
-    fun setStallDetectionEnabled(enabled: Boolean) {
-        viewModelScope.launch { preferencesManager.setStallDetectionEnabled(enabled) }
-    }
-
-    fun setAudioRepCountEnabled(enabled: Boolean) {
-        viewModelScope.launch { preferencesManager.setAudioRepCountEnabled(enabled) }
-    }
-
-    fun setSummaryCountdownSeconds(seconds: Int) {
-        Logger.d("setSummaryCountdownSeconds: Setting value to $seconds")
-        viewModelScope.launch { preferencesManager.setSummaryCountdownSeconds(seconds) }
-    }
-
-    fun setAutoStartCountdownSeconds(seconds: Int) {
-        viewModelScope.launch { preferencesManager.setAutoStartCountdownSeconds(seconds) }
-    }
-
-    fun setColorScheme(schemeIndex: Int) {
-        viewModelScope.launch {
-            bleRepository.setColorScheme(schemeIndex)
-            preferencesManager.setColorScheme(schemeIndex)
-            // Update disco mode's restore color index
-            (bleRepository as? com.devil.phoenixproject.data.repository.KableBleRepository)?.setLastColorSchemeIndex(schemeIndex)
-        }
-    }
+    // Settings functions - delegated to SettingsManager
+    fun setWeightUnit(unit: WeightUnit) = settingsManager.setWeightUnit(unit)
+    fun setStopAtTop(enabled: Boolean) = settingsManager.setStopAtTop(enabled)
+    fun setEnableVideoPlayback(enabled: Boolean) = settingsManager.setEnableVideoPlayback(enabled)
+    fun setStallDetectionEnabled(enabled: Boolean) = settingsManager.setStallDetectionEnabled(enabled)
+    fun setAudioRepCountEnabled(enabled: Boolean) = settingsManager.setAudioRepCountEnabled(enabled)
+    fun setSummaryCountdownSeconds(seconds: Int) = settingsManager.setSummaryCountdownSeconds(seconds)
+    fun setAutoStartCountdownSeconds(seconds: Int) = settingsManager.setAutoStartCountdownSeconds(seconds)
+    fun setColorScheme(schemeIndex: Int) = settingsManager.setColorScheme(schemeIndex)
 
     // ========== Disco Mode (Easter Egg) ==========
 
@@ -1524,23 +1323,9 @@ class MainViewModel constructor(
         }
     }
 
-    /**
-     * Emit badge earned sound event for badge celebration
-     */
-    fun emitBadgeSound() {
-        viewModelScope.launch {
-            _hapticEvents.emit(HapticEvent.BADGE_EARNED)
-        }
-    }
-
-    /**
-     * Emit personal record sound event for PR celebration
-     */
-    fun emitPRSound() {
-        viewModelScope.launch {
-            _hapticEvents.emit(HapticEvent.PERSONAL_RECORD)
-        }
-    }
+    // Sound events - delegated to GamificationManager
+    fun emitBadgeSound() = gamificationManager.emitBadgeSound()
+    fun emitPRSound() = gamificationManager.emitPRSound()
 
     /**
      * Test sound playback - plays a sequence of sounds for testing audio configuration.
@@ -1578,120 +1363,16 @@ class MainViewModel constructor(
         return preferencesManager.isSimulatorModeUnlocked()
     }
 
-    fun deleteAllWorkouts() {
-        viewModelScope.launch { workoutRepository.deleteAllSessions() }
-    }
+    fun deleteAllWorkouts() = historyManager.deleteAllWorkouts()
 
-    fun clearConnectionError() {
-        _connectionError.value = null
-    }
+    // Connection management - delegated to BleConnectionManager
+    fun clearConnectionError() = bleConnectionManager.clearConnectionError()
+    fun dismissConnectionLostAlert() = bleConnectionManager.dismissConnectionLostAlert()
+    fun cancelAutoConnecting() = bleConnectionManager.cancelAutoConnecting()
 
-    fun dismissConnectionLostAlert() {
-        _connectionLostDuringWorkout.value = false
-    }
-
-    fun cancelAutoConnecting() {
-        _isAutoConnecting.value = false
-        _connectionError.value = null
-        connectionJob?.cancel()
-        connectionJob = null
-        viewModelScope.launch { bleRepository.stopScanning() }
-    }
-
-    /**
-     * Ensures connection to a Vitruvian device.
-     * If already connected, immediately calls onConnected.
-     * If not connected, starts scan and auto-connects to first device found.
-     * Matches parent repo behavior with proper timeouts and cleanup.
-     */
-    fun ensureConnection(onConnected: () -> Unit, onFailed: () -> Unit = {}) {
-        // If already connected, just call the callback
-        if (connectionState.value is ConnectionState.Connected) {
-            Logger.d { "ensureConnection: Already connected, calling onConnected()" }
-            onConnected()
-            return
-        }
-
-        // If already connecting/scanning, cancel and return to disconnected
-        if (connectionState.value is ConnectionState.Connecting ||
-            connectionState.value is ConnectionState.Scanning) {
-            Logger.d { "ensureConnection: Cancelling in-progress connection" }
-            cancelConnection()
-            return
-        }
-
-        // Start new connection
-        connectionJob?.cancel()
-        connectionJob = null
-
-        connectionJob = viewModelScope.launch {
-            try {
-                _isAutoConnecting.value = true
-                _connectionError.value = null
-                _pendingConnectionCallback = onConnected
-
-                // Simple scan-and-connect matching parent repo behavior
-                Logger.d { "ensureConnection: Starting scanAndConnect..." }
-                val result = bleRepository.scanAndConnect(timeoutMs = 30000L)
-
-                _isAutoConnecting.value = false
-
-                if (result.isSuccess) {
-                    // Wait briefly for connection state to propagate
-                    delay(500)
-
-                    // Check if we're actually connected
-                    if (connectionState.value is ConnectionState.Connected) {
-                        Logger.d { "ensureConnection: Connected successfully" }
-                        onConnected()
-                    } else {
-                        // Wait a bit more for Connected state
-                        val connected = withTimeoutOrNull(15000) {
-                            connectionState
-                                .filter { it is ConnectionState.Connected }
-                                .first()
-                        }
-                        if (connected != null) {
-                            Logger.d { "ensureConnection: Connected after waiting" }
-                            onConnected()
-                        } else {
-                            Logger.w { "ensureConnection: Connection didn't complete" }
-                            _connectionError.value = "Connection timeout"
-                            _pendingConnectionCallback = null
-                            onFailed()
-                        }
-                    }
-                } else {
-                    Logger.w { "ensureConnection: scanAndConnect failed: ${result.exceptionOrNull()?.message}" }
-                    _connectionError.value = result.exceptionOrNull()?.message ?: "Connection failed"
-                    _pendingConnectionCallback = null
-                    onFailed()
-                }
-            } catch (e: Exception) {
-                Logger.e { "ensureConnection error: ${e.message}" }
-                bleRepository.cancelConnection()
-                _pendingConnectionCallback = null
-                _isAutoConnecting.value = false
-                _connectionError.value = "Error: ${e.message}"
-                onFailed()
-            }
-        }
-    }
-
-    /**
-     * Cancel any in-progress connection attempt and return to disconnected state.
-     */
-    fun cancelConnection() {
-        Logger.d { "cancelConnection: Cancelling connection attempt" }
-        connectionJob?.cancel()
-        connectionJob = null
-        _pendingConnectionCallback = null
-        _isAutoConnecting.value = false
-        viewModelScope.launch {
-            bleRepository.stopScanning()
-            bleRepository.cancelConnection()
-        }
-    }
+    fun ensureConnection(onConnected: () -> Unit, onFailed: () -> Unit = {}) =
+        bleConnectionManager.ensureConnection(onConnected, onFailed)
+    fun cancelConnection() = bleConnectionManager.cancelConnection()
 
     /**
      * Proceed from set summary to next step.
@@ -2034,32 +1715,12 @@ class MainViewModel constructor(
         return _loadedRoutine.value?.exercises?.map { it.exercise.name } ?: emptyList()
     }
 
-    fun deleteWorkout(sessionId: String) {
-        viewModelScope.launch { workoutRepository.deleteSession(sessionId) }
-    }
+    fun deleteWorkout(sessionId: String) = historyManager.deleteWorkout(sessionId)
 
-    fun kgToDisplay(kg: Float, unit: WeightUnit): Float =
-        when (unit) {
-            WeightUnit.KG -> kg
-            WeightUnit.LB -> kg * 2.20462f
-        }
-
-    fun displayToKg(display: Float, unit: WeightUnit): Float =
-        when (unit) {
-            WeightUnit.KG -> display
-            WeightUnit.LB -> display / 2.20462f
-        }
-
-    fun formatWeight(kg: Float, unit: WeightUnit): String {
-        val value = kgToDisplay(kg, unit)
-        // Format with up to 2 decimals, trimming trailing zeros
-        val formatted = if (value % 1 == 0f) {
-            value.toInt().toString()
-        } else {
-            value.format(2).trimEnd('0').trimEnd('.')
-        }
-        return "$formatted ${unit.name.lowercase()}"
-    }
+    // Weight conversion - delegated to SettingsManager
+    fun kgToDisplay(kg: Float, unit: WeightUnit) = settingsManager.kgToDisplay(kg, unit)
+    fun displayToKg(display: Float, unit: WeightUnit) = settingsManager.displayToKg(display, unit)
+    fun formatWeight(kg: Float, unit: WeightUnit) = settingsManager.formatWeight(kg, unit)
 
     fun saveRoutine(routine: Routine) {
         viewModelScope.launch { workoutRepository.saveRoutine(routine) }
@@ -3822,77 +3483,15 @@ class MainViewModel constructor(
 
         Logger.d("Saved workout session: $sessionId with ${metricsSnapshot.size} metrics")
 
-        // Track if a celebration sound will play (to avoid sound stacking)
-        var hasCelebrationSound = false
-
-        // Check for personal record (skip for Just Lift and Echo modes)
-        // Uses mode-specific PR lookup to track PRs separately per workout mode (#111)
-        params.selectedExerciseId?.let { exerciseId ->
-            if (working > 0 && !params.isJustLift && !params.isEchoMode) {
-                try {
-                    val workoutMode = params.programMode.displayName
-                    val timestamp = currentTimeMillis()
-
-                    // Use personalRecordRepository for mode-specific PR tracking
-                    // This returns which PR types were actually broken (weight, volume, or both)
-                    val result = personalRecordRepository.updatePRsIfBetter(
-                        exerciseId = exerciseId,
-                        weightPerCableKg = measuredPerCableKg,
-                        reps = working,
-                        workoutMode = workoutMode,
-                        timestamp = timestamp
-                    )
-
-                    // Only celebrate if an actual PR was broken
-                    result.onSuccess { brokenPRs ->
-                        if (brokenPRs.isNotEmpty()) {
-                            hasCelebrationSound = true // PR dialog will play sound via callback
-                            val exercise = exerciseRepository.getExerciseById(exerciseId)
-                            val prTypeDescription = when {
-                                brokenPRs.contains(PRType.MAX_WEIGHT) && brokenPRs.contains(PRType.MAX_VOLUME) -> "Weight & Volume"
-                                brokenPRs.contains(PRType.MAX_WEIGHT) -> "Weight"
-                                brokenPRs.contains(PRType.MAX_VOLUME) -> "Volume"
-                                else -> ""
-                            }
-                            _prCelebrationEvent.emit(
-                                PRCelebrationEvent(
-                                    exerciseName = exercise?.name ?: "Unknown Exercise",
-                                    weightPerCableKg = measuredPerCableKg,
-                                    reps = working,
-                                    workoutMode = workoutMode,
-                                    brokenPRTypes = brokenPRs
-                                )
-                            )
-                            Logger.d("NEW PR ($prTypeDescription): ${exercise?.name} - $measuredPerCableKg kg x $working reps in $workoutMode mode")
-                        }
-                    }.onFailure { e ->
-                        Logger.e(e) { "Error updating PR: ${e.message}" }
-                    }
-                } catch (e: Exception) {
-                    Logger.e(e) { "Error checking PR: ${e.message}" }
-                }
-            }
-        }
-
-        // Update gamification stats and check for badges
-        try {
-            gamificationRepository.updateStats()
-            val newBadges = gamificationRepository.checkAndAwardBadges()
-            if (newBadges.isNotEmpty()) {
-                // Only emit badge sound if no other celebration sound is playing (avoid sound stacking)
-                // PR celebration dialog plays its own sound via callback, so skip badge sound when PR earned
-                if (!hasCelebrationSound) {
-                    _hapticEvents.emit(HapticEvent.BADGE_EARNED)
-                    Logger.d("Badge sound emitted (no PR celebration)")
-                } else {
-                    Logger.d("Badge sound skipped (PR celebration will play)")
-                }
-                _badgeEarnedEvents.emit(newBadges)
-                Logger.d("New badges earned: ${newBadges.map { it.name }}")
-            }
-        } catch (e: Exception) {
-            Logger.e(e) { "Error updating gamification: ${e.message}" }
-        }
+        // PR checking and badge awarding - delegated to GamificationManager
+        gamificationManager.processPostSaveEvents(
+            exerciseId = params.selectedExerciseId,
+            workingReps = working,
+            measuredWeightKg = measuredPerCableKg,
+            programMode = params.programMode,
+            isJustLift = params.isJustLift,
+            isEchoMode = params.isEchoMode
+        )
 
         // Save exercise defaults for next time (only for Just Lift and Single Exercise modes)
         // Routines have their own saved configuration and should not interfere with these defaults
@@ -4700,7 +4299,7 @@ class MainViewModel constructor(
 
     override fun onCleared() {
         super.onCleared()
-        connectionJob?.cancel()
+        bleConnectionManager.cancelConnectionJob()
         monitorDataCollectionJob?.cancel()
         autoStartJob?.cancel()
         restTimerJob?.cancel()

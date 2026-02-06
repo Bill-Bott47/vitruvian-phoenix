@@ -38,7 +38,7 @@ import com.devil.phoenixproject.data.repository.ExerciseRepository
 import com.devil.phoenixproject.domain.model.WeightUnit
 import com.devil.phoenixproject.domain.model.WorkoutSession
 import com.devil.phoenixproject.domain.model.toSetSummary
-import com.devil.phoenixproject.presentation.viewmodel.HistoryItem
+import com.devil.phoenixproject.presentation.manager.HistoryItem
 import com.devil.phoenixproject.util.ColorScheme
 import com.devil.phoenixproject.util.ColorSchemes
 import com.devil.phoenixproject.util.DataBackupManager
@@ -123,12 +123,12 @@ fun HistoryTab(
             ) {
                 items(groupedWorkoutHistory.size, key = { index ->
                     when (val item = groupedWorkoutHistory[index]) {
-                        is com.devil.phoenixproject.presentation.viewmodel.SingleSessionHistoryItem -> item.session.id
-                        is com.devil.phoenixproject.presentation.viewmodel.GroupedRoutineHistoryItem -> item.routineSessionId
+                        is com.devil.phoenixproject.presentation.manager.SingleSessionHistoryItem -> item.session.id
+                        is com.devil.phoenixproject.presentation.manager.GroupedRoutineHistoryItem -> item.routineSessionId
                     }
                 }) { index ->
                     when (val item = groupedWorkoutHistory[index]) {
-                        is com.devil.phoenixproject.presentation.viewmodel.SingleSessionHistoryItem -> {
+                        is com.devil.phoenixproject.presentation.manager.SingleSessionHistoryItem -> {
                             WorkoutHistoryCard(
                                 session = item.session,
                                 weightUnit = weightUnit,
@@ -138,7 +138,7 @@ fun HistoryTab(
                                 onDelete = { onDeleteWorkout(item.session.id) }
                             )
                         }
-                        is com.devil.phoenixproject.presentation.viewmodel.GroupedRoutineHistoryItem -> {
+                        is com.devil.phoenixproject.presentation.manager.GroupedRoutineHistoryItem -> {
                             GroupedRoutineCard(
                                 groupedItem = item,
                                 weightUnit = weightUnit,
@@ -486,7 +486,7 @@ private data class ExerciseGroup(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupedRoutineCard(
-    groupedItem: com.devil.phoenixproject.presentation.viewmodel.GroupedRoutineHistoryItem,
+    groupedItem: com.devil.phoenixproject.presentation.manager.GroupedRoutineHistoryItem,
     weightUnit: WeightUnit,
     formatWeight: (Float, WeightUnit) -> String,
     kgToDisplay: (Float, WeightUnit) -> Float,
