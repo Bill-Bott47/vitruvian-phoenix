@@ -227,7 +227,7 @@ fun SingleExerciseScreen(
                         name = selectedExercise.name,
                         muscleGroup = selectedExercise.muscleGroups.split(",").firstOrNull()?.trim() ?: "Full Body",
                         muscleGroups = selectedExercise.muscleGroups,
-                        equipment = selectedExercise.equipment.split(",").firstOrNull()?.trim() ?: "",
+                        equipment = selectedExercise.equipment,
                         id = selectedExercise.id
                     )
 
