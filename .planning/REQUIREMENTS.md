@@ -78,30 +78,30 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TEST-01 | — | Pending |
-| TEST-02 | — | Pending |
-| TEST-03 | — | Pending |
-| TEST-04 | — | Pending |
-| MGR-01 | — | Pending |
-| MGR-02 | — | Pending |
-| MGR-03 | — | Pending |
-| MGR-04 | — | Pending |
-| MGR-05 | — | Pending |
-| MGR-06 | — | Pending |
-| MGR-07 | — | Pending |
-| UI-01 | — | Pending |
-| UI-02 | — | Pending |
-| UI-03 | — | Pending |
-| UI-04 | — | Pending |
-| DI-01 | — | Pending |
-| DI-02 | — | Pending |
-| DI-03 | — | Pending |
+| TEST-01 | Phase 1: Characterization Tests | Pending |
+| TEST-02 | Phase 1: Characterization Tests | Pending |
+| TEST-03 | Phase 1: Characterization Tests | Pending |
+| TEST-04 | Phase 1: Characterization Tests | Pending |
+| MGR-01 | Phase 2: Manager Decomposition | Pending |
+| MGR-02 | Phase 2: Manager Decomposition | Pending |
+| MGR-03 | Phase 2: Manager Decomposition | Pending |
+| MGR-04 | Phase 2: Manager Decomposition | Pending |
+| MGR-05 | Phase 2: Manager Decomposition | Pending |
+| MGR-06 | Phase 2: Manager Decomposition | Pending |
+| MGR-07 | Phase 2: Manager Decomposition | Pending |
+| UI-01 | Phase 3: UI Composable Decomposition | Pending |
+| UI-02 | Phase 3: UI Composable Decomposition | Pending |
+| UI-03 | Phase 3: UI Composable Decomposition | Pending |
+| UI-04 | Phase 3: UI Composable Decomposition | Pending |
+| DI-01 | Phase 4: Koin DI Cleanup | Pending |
+| DI-02 | Phase 4: Koin DI Cleanup | Pending |
+| DI-03 | Phase 4: Koin DI Cleanup | Pending |
 
 **Coverage:**
 - v0.4.1 requirements: 18 total
-- Mapped to phases: 0
-- Unmapped: 18 ⚠️
+- Mapped to phases: 18
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-12*
-*Last updated: 2026-02-12 after initial definition*
+*Last updated: 2026-02-12 after roadmap creation*
