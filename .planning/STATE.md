@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Users can connect to their Vitruvian trainer and execute workouts reliably on both platforms.
-**Current focus:** Phase 4 in progress — Koin DI Cleanup
+**Current focus:** All 4 phases complete — Refactoring milestone v0.4 done
 
 ## Current Position
 
-Phase: 4 of 4 (Koin DI Cleanup)
-Plan: 1 of 2 in phase 4 (04-01 complete)
-Status: Phase 4 plan 1 complete. Ready for plan 04-02.
-Last activity: 2026-02-13 — Split commonModule into 4 feature-scoped Koin modules
+Phase: 4 of 4 (Koin DI Cleanup) -- COMPLETE
+Plan: 2 of 2 in phase 4 (04-02 complete)
+Status: All phases complete. Milestone v0.4 refactoring done.
+Last activity: 2026-02-13 — Koin verify test added, dead AppModule deleted
 
-Progress: [█████████░] 90%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: ~28min per plan
-- Total execution time: ~4.2 hours
+- Total plans completed: 10
+- Average duration: ~26min per plan
+- Total execution time: ~4.25 hours
 
 **By Phase:**
 
@@ -30,11 +30,11 @@ Progress: [█████████░] 90%
 | 01 Characterization Tests | 2/2 | ~3h | ~1.5h |
 | 02 Manager Decomposition | 4/4 | 56min | 14min |
 | 03 UI Composable Decomposition | 2/2 | 19min | 10min |
-| 04 Koin DI Cleanup | 1/2 | 3min | 3min |
+| 04 Koin DI Cleanup | 2/2 | 6min | 3min |
 
 **Recent Trend:**
-- Last 5 plans: 02-03 (complete), 02-04 (complete), 03-01 (complete), 03-02 (complete), 04-01 (complete)
-- Trend: Phase 4 plan 1 completed in 3min
+- Last 5 plans: 02-04 (complete), 03-01 (complete), 03-02 (complete), 04-01 (complete), 04-02 (complete)
+- Trend: All 10 plans complete. Milestone v0.4 finished.
 
 *Updated after each plan completion*
 
@@ -68,6 +68,8 @@ Recent decisions affecting current work:
 - [Phase 3]: Same-package visibility eliminates need for import changes when splitting composable files
 - [Phase 4]: 30 bindings split across 4 modules: data(10), sync(7), domain(6), presentation(7)
 - [Phase 4]: appModule uses Koin includes() to compose feature modules -- single entry point preserved
+- [Phase 4]: Function0::class in extraTypes for lambda constructor params in Koin verify test
+- [Phase 4]: @OptIn(KoinExperimentalAPI::class) for Module.verify() experimental API
 
 ### Pending Todos
 
@@ -95,5 +97,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 04-01-PLAN.md (feature-scoped Koin module split). Ready for 04-02.
+Stopped at: Completed 04-02-PLAN.md (Koin verify test + dead code cleanup). All phases complete.
 Resume file: None
