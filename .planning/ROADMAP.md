@@ -12,8 +12,8 @@ This milestone completes the architectural decomposition started in v0.4.0 by br
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Characterization Tests** - Lock in current workout and routine behavior before any extraction
-- [ ] **Phase 2: Manager Decomposition** - Split DefaultWorkoutSessionManager into WorkoutCoordinator + RoutineFlowManager + ActiveSessionEngine
+- [x] **Phase 1: Characterization Tests** - Lock in current workout and routine behavior before any extraction
+- [x] **Phase 2: Manager Decomposition** - Split DefaultWorkoutSessionManager into WorkoutCoordinator + RoutineFlowManager + ActiveSessionEngine
 - [ ] **Phase 3: UI Composable Decomposition** - Split oversized composable files into focused, single-responsibility files
 - [ ] **Phase 4: Koin DI Cleanup** - Reorganize single commonModule into feature-scoped Koin modules
 
@@ -32,8 +32,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md -- DWSMTestHarness, WorkoutStateFixtures, and workout lifecycle characterization tests
-- [ ] 01-02-PLAN.md -- Routine flow characterization tests
+- [x] 01-01-PLAN.md -- DWSMTestHarness, WorkoutStateFixtures, and workout lifecycle characterization tests
+- [x] 01-02-PLAN.md -- Routine flow characterization tests
 
 ### Phase 2: Manager Decomposition
 **Goal**: DefaultWorkoutSessionManager is decomposed into focused sub-managers while preserving identical behavior and the same public API surface
@@ -50,10 +50,10 @@ Plans:
 **Plans**: 4 plans, 4 waves (sequential — each builds on previous)
 
 Plans:
-- [ ] 02-01-PLAN.md -- WorkoutCoordinator extraction (shared state bus)
-- [ ] 02-02-PLAN.md -- Circular dependency resolution (SharedFlow event pattern)
-- [ ] 02-03-PLAN.md -- RoutineFlowManager extraction
-- [ ] 02-04-PLAN.md -- ActiveSessionEngine extraction and DWSM reduction
+- [x] 02-01-PLAN.md -- WorkoutCoordinator extraction (shared state bus)
+- [x] 02-02-PLAN.md -- Circular dependency resolution (SharedFlow event pattern)
+- [x] 02-03-PLAN.md -- RoutineFlowManager extraction
+- [x] 02-04-PLAN.md -- ActiveSessionEngine extraction and DWSM reduction
 
 ### Phase 3: UI Composable Decomposition
 **Goal**: Oversized composable files are split into focused, navigable files without any visual or behavioral change
@@ -90,7 +90,7 @@ Phases execute in numeric order: 1 --> 2 --> 3 --> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Characterization Tests | 0/2 | Planned | - |
-| 2. Manager Decomposition | 0/4 | Planned | - |
+| 1. Characterization Tests | 2/2 | ✓ Complete | 2026-02-13 |
+| 2. Manager Decomposition | 4/4 | ✓ Complete | 2026-02-13 |
 | 3. UI Composable Decomposition | 0/2 | Not started | - |
 | 4. Koin DI Cleanup | 0/1 | Not started | - |
