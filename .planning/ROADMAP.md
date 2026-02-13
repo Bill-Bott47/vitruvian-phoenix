@@ -29,11 +29,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Test fixtures exist that construct pre-built workout states (Active, Resting, SetReady, etc.) in one line, usable by any future test
   4. All characterization tests run in commonTest with no platform-specific dependencies (pure KMP)
   5. All tests pass against the current unmodified DefaultWorkoutSessionManager
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: Workout lifecycle characterization tests and test fixtures
-- [ ] 01-02: Routine flow characterization tests
+- [ ] 01-01-PLAN.md -- DWSMTestHarness, WorkoutStateFixtures, and workout lifecycle characterization tests
+- [ ] 01-02-PLAN.md -- Routine flow characterization tests
 
 ### Phase 2: Manager Decomposition
 **Goal**: DefaultWorkoutSessionManager is decomposed into focused sub-managers while preserving identical behavior and the same public API surface
@@ -90,7 +90,7 @@ Phases execute in numeric order: 1 --> 2 --> 3 --> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Characterization Tests | 0/2 | Not started | - |
+| 1. Characterization Tests | 0/2 | Planned | - |
 | 2. Manager Decomposition | 0/4 | Not started | - |
 | 3. UI Composable Decomposition | 0/2 | Not started | - |
 | 4. Koin DI Cleanup | 0/1 | Not started | - |
