@@ -77,6 +77,9 @@ class DWSMTestHarness(val testScope: TestScope) {
     /** Convenience accessor for the routine flow manager (routine CRUD, navigation, supersets) */
     val routineFlowManager get() = dwsm.routineFlowManager
 
+    /** Convenience accessor for the active session engine (workout lifecycle, BLE, auto-stop, rest timer) */
+    val activeSessionEngine get() = dwsm.activeSessionEngine
+
     /**
      * Cancel all DWSM coroutines to prevent UncompletedCoroutinesError.
      * Call this at the end of each test after assertions are complete.
