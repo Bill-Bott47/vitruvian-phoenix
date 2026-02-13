@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Users can connect to their Vitruvian trainer and execute workouts reliably on both platforms.
-**Current focus:** Phase 3 in progress — UI Composable Decomposition
+**Current focus:** Phase 4 in progress — Koin DI Cleanup
 
 ## Current Position
 
-Phase: 3 of 4 (UI Composable Decomposition) -- COMPLETE
-Plan: 2 of 2 in phase 3 (03-02 complete)
-Status: Phase 3 complete. Ready for Phase 4.
-Last activity: 2026-02-13 — Extracted WorkoutTab dialogs to dedicated files
+Phase: 4 of 4 (Koin DI Cleanup)
+Plan: 1 of 2 in phase 4 (04-01 complete)
+Status: Phase 4 plan 1 complete. Ready for plan 04-02.
+Last activity: 2026-02-13 — Split commonModule into 4 feature-scoped Koin modules
 
-Progress: [████████░░] 80%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: ~31min per plan
-- Total execution time: ~4.1 hours
+- Total plans completed: 9
+- Average duration: ~28min per plan
+- Total execution time: ~4.2 hours
 
 **By Phase:**
 
@@ -30,10 +30,11 @@ Progress: [████████░░] 80%
 | 01 Characterization Tests | 2/2 | ~3h | ~1.5h |
 | 02 Manager Decomposition | 4/4 | 56min | 14min |
 | 03 UI Composable Decomposition | 2/2 | 19min | 10min |
+| 04 Koin DI Cleanup | 1/2 | 3min | 3min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (complete), 02-03 (complete), 02-04 (complete), 03-01 (complete), 03-02 (complete)
-- Trend: Phase 3 completed in 19min total (2 plans)
+- Last 5 plans: 02-03 (complete), 02-04 (complete), 03-01 (complete), 03-02 (complete), 04-01 (complete)
+- Trend: Phase 4 plan 1 completed in 3min
 
 *Updated after each plan completion*
 
@@ -65,6 +66,8 @@ Recent decisions affecting current work:
 - [Phase 2]: ActiveSessionEngine does NOT implement WorkoutLifecycleDelegate (that stays on DWSM)
 - [Phase 3]: formatFloat and Float.pow are internal in SetSummaryCard.kt (used by both SetSummaryCard helpers and WorkoutTab composables)
 - [Phase 3]: Same-package visibility eliminates need for import changes when splitting composable files
+- [Phase 4]: 30 bindings split across 4 modules: data(10), sync(7), domain(6), presentation(7)
+- [Phase 4]: appModule uses Koin includes() to compose feature modules -- single entry point preserved
 
 ### Pending Todos
 
@@ -92,5 +95,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 03-02-PLAN.md (WorkoutTab dialog extraction). Phase 3 complete. Ready for Phase 4.
+Stopped at: Completed 04-01-PLAN.md (feature-scoped Koin module split). Ready for 04-02.
 Resume file: None
