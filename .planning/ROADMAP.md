@@ -47,13 +47,13 @@ Plans:
   5. The circular dependency between BleConnectionManager and WorkoutSessionManager is eliminated (no more lateinit var) via SharedFlow event pattern
   6. All Phase 1 characterization tests still pass after each extraction step (zero behavior regression)
   7. MainViewModel public API is unchanged -- no UI screen modifications required
-**Plans**: TBD
+**Plans**: 4 plans, 4 waves (sequential — each builds on previous)
 
 Plans:
-- [ ] 02-01: WorkoutCoordinator extraction (shared state bus)
-- [ ] 02-02: Circular dependency resolution (SharedFlow event pattern)
-- [ ] 02-03: RoutineFlowManager extraction
-- [ ] 02-04: ActiveSessionEngine extraction and DWSM reduction
+- [ ] 02-01-PLAN.md -- WorkoutCoordinator extraction (shared state bus)
+- [ ] 02-02-PLAN.md -- Circular dependency resolution (SharedFlow event pattern)
+- [ ] 02-03-PLAN.md -- RoutineFlowManager extraction
+- [ ] 02-04-PLAN.md -- ActiveSessionEngine extraction and DWSM reduction
 
 ### Phase 3: UI Composable Decomposition
 **Goal**: Oversized composable files are split into focused, navigable files without any visual or behavioral change
@@ -91,6 +91,6 @@ Phases execute in numeric order: 1 --> 2 --> 3 --> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Characterization Tests | 0/2 | Planned | - |
-| 2. Manager Decomposition | 0/4 | Not started | - |
+| 2. Manager Decomposition | 0/4 | Planned | - |
 | 3. UI Composable Decomposition | 0/2 | Not started | - |
 | 4. Koin DI Cleanup | 0/1 | Not started | - |
