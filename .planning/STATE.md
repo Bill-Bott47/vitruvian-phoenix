@@ -10,29 +10,29 @@ See: .planning/PROJECT.md (updated 2026-02-12)
 ## Current Position
 
 Phase: 2 of 4 (Manager Decomposition)
-Plan: 1 of 4 complete in current phase
-Status: Plan 02-01 complete, ready for Plan 02-02
-Last activity: 2026-02-13 — WorkoutCoordinator extracted as shared state bus
+Plan: 2 of 4 complete in current phase
+Status: Plan 02-02 complete, ready for Plan 02-03
+Last activity: 2026-02-13 — Circular dependency DWSM<->BleConnectionManager eliminated via SharedFlow
 
-Progress: [███▊░░░░░░] 37.5%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: ~1h per plan
-- Total execution time: ~3.2 hours
+- Total plans completed: 4
+- Average duration: ~50min per plan
+- Total execution time: ~3.3 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 Characterization Tests | 2/2 | ~3h | ~1.5h |
-| 02 Manager Decomposition | 1/4 | 11min | 11min |
+| 02 Manager Decomposition | 2/4 | 15min | 7.5min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (complete), 01-02 (complete), 02-01 (complete)
-- Trend: Phase 2 started, Plan 01 done in 11 min
+- Last 5 plans: 01-01 (complete), 01-02 (complete), 02-01 (complete), 02-02 (complete)
+- Trend: Phase 2 accelerating, Plan 02 done in 4 min
 
 *Updated after each plan completion*
 
@@ -53,6 +53,8 @@ Recent decisions affecting current work:
 - [Phase 2]: No delegation properties on DWSM -- Kotlin overload resolution ambiguity; callers use coordinator directly
 - [Phase 2]: MainViewModel accesses state via workoutSessionManager.coordinator.* (not workoutSessionManager.*)
 - [Phase 2]: Tests access state via dwsm.coordinator.* for assertions
+- [Phase 2]: BLE errors propagate via coordinator.bleErrorEvents SharedFlow (one-way: DWSM emits, BleConnectionManager collects)
+- [Phase 2]: WorkoutStateProvider interface retained on BleConnectionManager for connection-loss detection
 
 ### Pending Todos
 
@@ -80,5 +82,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed 02-01-PLAN.md (WorkoutCoordinator extraction)
+Stopped at: Completed 02-02-PLAN.md (Circular dependency elimination)
 Resume file: None
