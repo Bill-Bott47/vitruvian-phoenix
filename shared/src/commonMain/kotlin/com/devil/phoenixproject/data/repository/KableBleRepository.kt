@@ -3,13 +3,13 @@ package com.devil.phoenixproject.data.repository
 import com.devil.phoenixproject.domain.model.ConnectionState
 import com.devil.phoenixproject.domain.model.SampleStatus
 import com.devil.phoenixproject.domain.model.WorkoutMetric
+import com.devil.phoenixproject.util.BleConstants
 import com.devil.phoenixproject.util.BlePacketFactory
 import com.juul.kable.Advertisement
 import com.juul.kable.Peripheral
 import com.juul.kable.Scanner
 import com.juul.kable.State
 import com.juul.kable.WriteType
-import com.juul.kable.characteristicOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -58,137 +58,19 @@ class KableBleRepository : BleRepository {
     private val logRepo = ConnectionLogRepository.instance
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    // Nordic UART Service UUIDs (matching parent repo BleConstants.kt)
-    companion object {
-        // Primary Service
-        private val NUS_SERVICE_UUID = Uuid.parse("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
+    // BLE protocol constants now centralized in BleConstants.kt
 
-        // Primary Characteristic UUIDs
-        private val NUS_TX_UUID = Uuid.parse("6e400002-b5a3-f393-e0a9-e50e24dcca9e")  // Write (RX on device)
-        // NOTE: Standard NUS RX (6e400003) does NOT exist on Vitruvian devices - they use custom characteristics
-        @Suppress("unused") // Vitruvian doesn't have standard NUS RX
-        private val NUS_RX_UUID = Uuid.parse("6e400003-b5a3-f393-e0a9-e50e24dcca9e")  // Notify (not present on Vitruvian)
-        private val MONITOR_UUID = Uuid.parse("90e991a6-c548-44ed-969b-eb541014eae3") // Poll (position/load) - NOT notifiable!
-        private val REPS_UUID = Uuid.parse("8308f2a6-0875-4a94-a86f-5c5c5e1b068a")    // Notify (rep events)
-
-        // Additional Characteristic UUIDs (from parent repo - complete protocol coverage)
-        private val DIAGNOSTIC_UUID = Uuid.parse("5fa538ec-d041-42f6-bbd6-c30d475387b7")  // Poll (keep-alive + diagnostics)
-        private val HEURISTIC_UUID = Uuid.parse("c7b73007-b245-4503-a1ed-9e4e97eb9802")   // Poll (phase statistics at 4Hz)
-        private val VERSION_UUID = Uuid.parse("74e994ac-0e80-4c02-9cd0-76cb31d3959b")     // Notify (firmware version)
-        private val MODE_UUID = Uuid.parse("67d0dae0-5bfc-4ea2-acc9-ac784dee7f29")        // Notify (mode changes)
-        @Suppress("unused") // Reserved for OTA update feature
-        private val UPDATE_STATE_UUID = Uuid.parse("383f7276-49af-4335-9072-f01b0f8acad6") // Notify (update state)
-        @Suppress("unused") // Reserved for OTA update feature
-        private val BLE_UPDATE_REQUEST_UUID = Uuid.parse("ef0e485a-8749-4314-b1be-01e57cd1712e") // Notify (update request)
-        @Suppress("unused") // Reserved for auth feature
-        private val UNKNOWN_AUTH_UUID = Uuid.parse("36e6c2ee-21c7-404e-aa9b-f74ca4728ad4") // Notify (auth - web apps use this)
-
-        // Device Information Service (DIS) - standard BLE service for firmware version
-        private val DIS_SERVICE_UUID = Uuid.parse("0000180a-0000-1000-8000-00805f9b34fb")
-        private val FIRMWARE_REVISION_UUID = Uuid.parse("00002a26-0000-1000-8000-00805f9b34fb")
-
-        // Connection settings
-        private const val CONNECTION_RETRY_COUNT = 3
-        private const val CONNECTION_RETRY_DELAY_MS = 100L
-        private const val CONNECTION_TIMEOUT_MS = 15_000L
-        private const val DESIRED_MTU = 247  // Match parent repo (needs 100+ for 96-byte program frames)
-
-        // Handle detection thresholds (from parent repo - proven working)
-        // Position values are in mm (raw / 10.0f), so thresholds are in mm
-        private const val HANDLE_GRABBED_THRESHOLD = 8.0    // Position > 8.0mm = handles grabbed
-        private const val HANDLE_REST_THRESHOLD = 5.0       // Position < 5.0mm = handles at rest (Increased from 2.5 to handle drift - matches parent repo)
-        // Velocity is in mm/s (calculated from mm positions)
-        private const val VELOCITY_THRESHOLD = 50.0         // Velocity > 50 mm/s = significant movement (matches official concentric threshold)
-        private const val AUTO_START_VELOCITY_THRESHOLD = 20.0  // Lower threshold for auto-start grab detection (Issue #96)
-
-        // Velocity smoothing (Issue #204, #214)
-        // EMA alpha: 0.3 = balanced smoothing (faster response during direction changes)
-        // Higher alpha reduces zero-crossing dwell time during eccentric/concentric transitions
-        // which prevents false stall detection during controlled tempo movements
-        private const val VELOCITY_SMOOTHING_ALPHA = 0.3
-
-        // Sample validation
-        @Suppress("unused") // Reserved for future spike detection
-        private const val POSITION_SPIKE_THRESHOLD = 50000  // BLE error filter
-        private const val MIN_POSITION = -1000              // Valid position range
-        private const val MAX_POSITION = 1000               // Valid position range
-        private const val POSITION_JUMP_THRESHOLD = 20.0f   // Max allowed position change between samples (mm)
-
-        // Timing constants
-        private const val HEARTBEAT_INTERVAL_MS = 2000L
-        private const val HEARTBEAT_READ_TIMEOUT_MS = 1500L
-        private const val DELOAD_EVENT_DEBOUNCE_MS = 2000L
-        private const val DIAGNOSTIC_POLL_INTERVAL_MS = 500L  // Keep-alive polling (matching parent)
-        private const val HEURISTIC_POLL_INTERVAL_MS = 250L   // Force telemetry polling (4Hz - matching parent repo)
-        private const val DIAGNOSTIC_LOG_EVERY = 20L         // Log diagnostic poll success every N reads
-
-        // Heartbeat no-op command (MUST be 4 bytes)
-        private val HEARTBEAT_NO_OP = byteArrayOf(0x00, 0x00, 0x00, 0x00)
-
-        // Load validation (Task 8)
-        private const val MAX_WEIGHT_KG = 220.0f  // Trainer+ hardware limit
-
-        // Timeout disconnect detection (Task 13)
-        private const val MAX_CONSECUTIVE_TIMEOUTS = 5
-
-        // Handle state hysteresis (Task 14)
-        private const val STATE_TRANSITION_DWELL_MS = 200L
-        
-        // WaitingForRest timeout (iOS autostart fix)
-        // If handles are pre-tensioned when screen loads, allow arming after timeout
-        private const val WAITING_FOR_REST_TIMEOUT_MS = 3000L
-
-        // Issue #176: Dynamic baseline threshold for overhead pulley setups
-        // When cables can't reach rest position, detect grab via position CHANGE from baseline
-        private const val GRAB_DELTA_THRESHOLD = 10.0  // Position change (mm) to detect grab
-        // Issue #176: Release delta threshold - position must return within 5mm of baseline
-        // Using 5mm (vs 10mm for grab) provides hysteresis - user must return closer to baseline than where grab triggered
-        private const val RELEASE_DELTA_THRESHOLD = 5.0
-    }
-
-    // Kable characteristic references - PRIMARY (required for basic operation)
-    private val txCharacteristic = characteristicOf(
-        service = NUS_SERVICE_UUID,
-        characteristic = NUS_TX_UUID
-    )
-    // NOTE: rxCharacteristic not used - Vitruvian doesn't have standard NUS RX (6e400003)
-    @Suppress("unused")
-    private val rxCharacteristic = characteristicOf(
-        service = NUS_SERVICE_UUID,
-        characteristic = NUS_RX_UUID
-    )
-    private val monitorCharacteristic = characteristicOf(
-        service = NUS_SERVICE_UUID,
-        characteristic = MONITOR_UUID
-    )
-    private val repsCharacteristic = characteristicOf(
-        service = NUS_SERVICE_UUID,
-        characteristic = REPS_UUID
-    )
-
-    // Kable characteristic references - SECONDARY (for complete protocol coverage)
-    private val diagnosticCharacteristic = characteristicOf(
-        service = NUS_SERVICE_UUID,
-        characteristic = DIAGNOSTIC_UUID
-    )
-    private val heuristicCharacteristic = characteristicOf(
-        service = NUS_SERVICE_UUID,
-        characteristic = HEURISTIC_UUID
-    )
-    private val versionCharacteristic = characteristicOf(
-        service = NUS_SERVICE_UUID,
-        characteristic = VERSION_UUID
-    )
-    private val modeCharacteristic = characteristicOf(
-        service = NUS_SERVICE_UUID,
-        characteristic = MODE_UUID
-    )
-
-    // DIS characteristics for firmware version (standard BLE service)
-    private val firmwareRevisionCharacteristic = characteristicOf(
-        service = DIS_SERVICE_UUID,
-        characteristic = FIRMWARE_REVISION_UUID
-    )
+    // Kable characteristic references - using pre-built references from BleConstants
+    private val txCharacteristic = BleConstants.txCharacteristic
+    @Suppress("unused") // Vitruvian doesn't use standard NUS RX (6e400003)
+    private val rxCharacteristic = BleConstants.rxCharacteristic
+    private val monitorCharacteristic = BleConstants.monitorCharacteristic
+    private val repsCharacteristic = BleConstants.repsCharacteristic
+    private val diagnosticCharacteristic = BleConstants.diagnosticCharacteristic
+    private val heuristicCharacteristic = BleConstants.heuristicCharacteristic
+    private val versionCharacteristic = BleConstants.versionCharacteristic
+    private val modeCharacteristic = BleConstants.modeCharacteristic
+    private val firmwareRevisionCharacteristic = BleConstants.firmwareRevisionCharacteristic
 
     // State flows
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
@@ -448,7 +330,7 @@ class KableBleRepository : BleRepository {
                     val hasVitruvianServiceUuid = serviceUuids.any { uuid ->
                         val uuidStr = uuid.toString().lowercase()
                         uuidStr.startsWith("0000fef3") ||
-                        uuidStr == "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+                        uuidStr == BleConstants.NUS_SERVICE_UUID_STRING
                     }
 
                     if (hasVitruvianServiceUuid) {
@@ -759,12 +641,12 @@ class KableBleRepository : BleRepository {
 
             // Connection with retry logic and timeout protection
             var lastException: Exception? = null
-            for (attempt in 1..CONNECTION_RETRY_COUNT) {
+            for (attempt in 1..BleConstants.Timing.CONNECTION_RETRY_COUNT) {
                 try {
-                    log.d { "Connection attempt $attempt of $CONNECTION_RETRY_COUNT" }
+                    log.d { "Connection attempt $attempt of ${BleConstants.Timing.CONNECTION_RETRY_COUNT}" }
 
                     // Wrap connection in timeout to prevent zombie "Connecting" state
-                    withTimeout(CONNECTION_TIMEOUT_MS) {
+                    withTimeout(BleConstants.CONNECTION_TIMEOUT_MS) {
                         peripheral?.connect()
                         log.i { "Connection initiated to ${device.name}, waiting for established state..." }
 
@@ -776,16 +658,16 @@ class KableBleRepository : BleRepository {
 
                     return Result.success(Unit) // Success, exit retry loop
                 } catch (e: TimeoutCancellationException) {
-                    lastException = Exception("Connection timeout after ${CONNECTION_TIMEOUT_MS}ms")
-                    log.w { "Connection attempt $attempt timed out after ${CONNECTION_TIMEOUT_MS}ms" }
-                    if (attempt < CONNECTION_RETRY_COUNT) {
-                        delay(CONNECTION_RETRY_DELAY_MS)
+                    lastException = Exception("Connection timeout after ${BleConstants.CONNECTION_TIMEOUT_MS}ms")
+                    log.w { "Connection attempt $attempt timed out after ${BleConstants.CONNECTION_TIMEOUT_MS}ms" }
+                    if (attempt < BleConstants.Timing.CONNECTION_RETRY_COUNT) {
+                        delay(BleConstants.Timing.CONNECTION_RETRY_DELAY_MS)
                     }
                 } catch (e: Exception) {
                     lastException = e
                     log.w { "Connection attempt $attempt failed: ${e.message}" }
-                    if (attempt < CONNECTION_RETRY_COUNT) {
-                        delay(CONNECTION_RETRY_DELAY_MS)
+                    if (attempt < BleConstants.Timing.CONNECTION_RETRY_COUNT) {
+                        delay(BleConstants.Timing.CONNECTION_RETRY_DELAY_MS)
                     }
                 }
             }
@@ -794,7 +676,7 @@ class KableBleRepository : BleRepository {
             peripheral?.disconnect()
             peripheral = null
             _connectionState.value = ConnectionState.Disconnected
-            throw lastException ?: Exception("Connection failed after $CONNECTION_RETRY_COUNT attempts")
+            throw lastException ?: Exception("Connection failed after ${BleConstants.Timing.CONNECTION_RETRY_COUNT} attempts")
 
         } catch (e: Exception) {
             log.e { "Connection failed: ${e.message}" }
@@ -828,10 +710,10 @@ class KableBleRepository : BleRepository {
         // Request MTU negotiation (Android only - iOS handles automatically)
         // CRITICAL: Without MTU negotiation, BLE uses default 23-byte MTU (20 usable)
         // Vitruvian commands require up to 96 bytes for activation frames
-        val mtu = p.requestMtuIfSupported(DESIRED_MTU)
+        val mtu = p.requestMtuIfSupported(BleConstants.Timing.DESIRED_MTU)
         if (mtu != null) {
             negotiatedMtu = mtu
-            log.i { "✅ MTU negotiated: $mtu bytes (requested: $DESIRED_MTU)" }
+            log.i { "✅ MTU negotiated: $mtu bytes (requested: ${BleConstants.Timing.DESIRED_MTU})" }
             logRepo.info(
                 LogEventType.MTU_CHANGED,
                 "MTU negotiated: $mtu bytes",
@@ -944,9 +826,9 @@ class KableBleRepository : BleRepository {
     private fun startHeartbeat() {
         heartbeatJob?.cancel()
         heartbeatJob = scope.launch {
-            log.d { "Starting BLE heartbeat (interval=${HEARTBEAT_INTERVAL_MS}ms, read timeout=${HEARTBEAT_READ_TIMEOUT_MS}ms)" }
+            log.d { "Starting BLE heartbeat (interval=${BleConstants.Timing.HEARTBEAT_INTERVAL_MS}ms, read timeout=${BleConstants.Timing.HEARTBEAT_READ_TIMEOUT_MS}ms)" }
             while (isActive) {
-                delay(HEARTBEAT_INTERVAL_MS)
+                delay(BleConstants.Timing.HEARTBEAT_INTERVAL_MS)
 
                 val p = peripheral
                 if (p == null) {
@@ -956,7 +838,7 @@ class KableBleRepository : BleRepository {
 
                 // ATTEMPT READ FIRST with timeout
                 val readSucceeded = try {
-                    kotlinx.coroutines.withTimeoutOrNull(HEARTBEAT_READ_TIMEOUT_MS) {
+                    kotlinx.coroutines.withTimeoutOrNull(BleConstants.Timing.HEARTBEAT_READ_TIMEOUT_MS) {
                         performHeartbeatRead(p)
                     } ?: false
                 } catch (e: Exception) {
@@ -1001,7 +883,7 @@ class KableBleRepository : BleRepository {
         try {
             bleOperationMutex.withLock {
                 // Issue #222 v15.1: V-Form only supports WithResponse
-                p.write(txCharacteristic, HEARTBEAT_NO_OP, WriteType.WithResponse)
+                p.write(txCharacteristic, BleConstants.HEARTBEAT_NO_OP, WriteType.WithResponse)
             }
             log.v { "Heartbeat no-op write sent" }
         } catch (e: Exception) {
@@ -1170,7 +1052,7 @@ class KableBleRepository : BleRepository {
     private fun startDiagnosticPolling(p: Peripheral) {
         diagnosticPollingJob?.cancel()
         diagnosticPollingJob = scope.launch {
-            log.d { "🔄 Starting SEQUENTIAL diagnostic polling (${DIAGNOSTIC_POLL_INTERVAL_MS}ms interval - matches official app)" }
+            log.d { "🔄 Starting SEQUENTIAL diagnostic polling (${BleConstants.Timing.DIAGNOSTIC_POLL_INTERVAL_MS}ms interval - matches official app)" }
             var successfulReads = 0L
             var failedReads = 0L
             diagnosticPollCount = 0
@@ -1178,7 +1060,7 @@ class KableBleRepository : BleRepository {
 
             while (_connectionState.value is ConnectionState.Connected && isActive) {
                 try {
-                    val data = withTimeoutOrNull(HEARTBEAT_READ_TIMEOUT_MS) {
+                    val data = withTimeoutOrNull(BleConstants.Timing.HEARTBEAT_READ_TIMEOUT_MS) {
                         bleOperationMutex.withLock {
                             p.read(diagnosticCharacteristic)
                         }
@@ -1187,7 +1069,7 @@ class KableBleRepository : BleRepository {
                     if (data != null) {
                         successfulReads++
                         diagnosticPollCount++
-                        if (diagnosticPollCount == 1L || diagnosticPollCount % DIAGNOSTIC_LOG_EVERY == 0L) {
+                        if (diagnosticPollCount == 1L || diagnosticPollCount % BleConstants.Timing.DIAGNOSTIC_LOG_EVERY == 0L) {
                             log.d { "📊 Diagnostic poll #$diagnosticPollCount (bytes=${data.size}, failed=$failedReads)" }
                         }
                         parseDiagnosticData(data)
@@ -1196,13 +1078,13 @@ class KableBleRepository : BleRepository {
                     }
 
                     // Fixed 500ms interval for keep-alive purposes
-                    delay(DIAGNOSTIC_POLL_INTERVAL_MS)
+                    delay(BleConstants.Timing.DIAGNOSTIC_POLL_INTERVAL_MS)
                 } catch (e: Exception) {
                     failedReads++
                     if (failedReads <= 5 || failedReads % 20 == 0L) {
                         log.w { "❌ Diagnostic poll failed #$failedReads: ${e.message}" }
                     }
-                    delay(DIAGNOSTIC_POLL_INTERVAL_MS)
+                    delay(BleConstants.Timing.DIAGNOSTIC_POLL_INTERVAL_MS)
                 }
             }
             log.d { "📊 Diagnostic polling ended (success: $successfulReads, failed: $failedReads)" }
@@ -1223,13 +1105,13 @@ class KableBleRepository : BleRepository {
     private fun startHeuristicPolling(p: Peripheral) {
         heuristicPollingJob?.cancel()
         heuristicPollingJob = scope.launch {
-            log.d { "🔄 Starting SEQUENTIAL heuristic polling (${HEURISTIC_POLL_INTERVAL_MS}ms interval / 4Hz - matching parent repo)" }
+            log.d { "🔄 Starting SEQUENTIAL heuristic polling (${BleConstants.Timing.HEURISTIC_POLL_INTERVAL_MS}ms interval / 4Hz - matching parent repo)" }
             var successfulReads = 0L
             var failedReads = 0L
 
             while (_connectionState.value is ConnectionState.Connected && isActive) {
                 try {
-                    val data = withTimeoutOrNull(HEARTBEAT_READ_TIMEOUT_MS) {
+                    val data = withTimeoutOrNull(BleConstants.Timing.HEARTBEAT_READ_TIMEOUT_MS) {
                         bleOperationMutex.withLock {
                             p.read(heuristicCharacteristic)
                         }
@@ -1249,13 +1131,13 @@ class KableBleRepository : BleRepository {
                     }
 
                     // Fixed 250ms interval (4Hz) matching parent repo
-                    delay(HEURISTIC_POLL_INTERVAL_MS)
+                    delay(BleConstants.Timing.HEURISTIC_POLL_INTERVAL_MS)
                 } catch (e: Exception) {
                     failedReads++
                     if (failedReads <= 5 || failedReads % 50 == 0L) {
                         log.w { "❌ Heuristic poll failed #$failedReads: ${e.message}" }
                     }
-                    delay(HEURISTIC_POLL_INTERVAL_MS)
+                    delay(BleConstants.Timing.HEURISTIC_POLL_INTERVAL_MS)
                 }
             }
             log.d { "📊 Heuristic polling ended (success: $successfulReads, failed: $failedReads)" }
@@ -1353,7 +1235,7 @@ class KableBleRepository : BleRepository {
      * Per official Vitruvian app analysis, Sample data MUST be polled via readCharacteristic()"
      *
      * CRITICAL: Uses withTimeout to prevent hangs if BLE stack doesn't respond.
-     * Parent repo uses withTimeoutOrNull(HEARTBEAT_READ_TIMEOUT_MS) for the same reason.
+     * Parent repo uses withTimeoutOrNull(BleConstants.Timing.HEARTBEAT_READ_TIMEOUT_MS) for the same reason.
      * NO fixed delay between successful reads - natural rate-limiting by BLE response time.
      *
      * @param forAutoStart If true, enables handle detection with WaitingForRest state (for Just Lift auto-start).
@@ -1401,7 +1283,7 @@ class KableBleRepository : BleRepository {
             // Issue #176: Reset baseline tracking for fresh grab detection
             restBaselinePosA = null
             restBaselinePosB = null
-            log.i { "🎯 Monitor polling for AUTO-START - waiting for handles at rest (pos < ${HANDLE_REST_THRESHOLD}mm), vel threshold=${AUTO_START_VELOCITY_THRESHOLD}mm/s" }
+            log.i { "🎯 Monitor polling for AUTO-START - waiting for handles at rest (pos < ${BleConstants.Thresholds.HANDLE_REST_THRESHOLD}mm), vel threshold=${BleConstants.Thresholds.AUTO_START_VELOCITY_THRESHOLD}mm/s" }
         } else {
             isAutoStartMode = false  // Normal mode uses standard velocity threshold
         }
@@ -1420,7 +1302,7 @@ class KableBleRepository : BleRepository {
                 var failCount = 0
                 var successCount = 0L
                 var consecutiveTimeouts = 0
-                log.i { "🔄 Starting SEQUENTIAL monitor polling (with timeout=${HEARTBEAT_READ_TIMEOUT_MS}ms, forAutoStart=$forAutoStart)" }
+                log.i { "🔄 Starting SEQUENTIAL monitor polling (with timeout=${BleConstants.Timing.HEARTBEAT_READ_TIMEOUT_MS}ms, forAutoStart=$forAutoStart)" }
 
                 try {
                     while (_connectionState.value is ConnectionState.Connected && isActive) {
@@ -1428,7 +1310,7 @@ class KableBleRepository : BleRepository {
                         // CRITICAL: Wrap read in timeout to prevent indefinite hangs
                         // BLE stack can sometimes fail to return success/failure callback
                         // This matches parent repo's withTimeoutOrNull pattern
-                        val data = withTimeoutOrNull(HEARTBEAT_READ_TIMEOUT_MS) {
+                        val data = withTimeoutOrNull(BleConstants.Timing.HEARTBEAT_READ_TIMEOUT_MS) {
                             bleOperationMutex.withLock {
                                 p.read(monitorCharacteristic)
                             }
@@ -1448,10 +1330,10 @@ class KableBleRepository : BleRepository {
                             // Timeout - BLE stack hung, continue polling
                             consecutiveTimeouts++
                             if (consecutiveTimeouts <= 3 || consecutiveTimeouts % 10 == 0) {
-                                log.w { "⏱️ Monitor read timed out (${HEARTBEAT_READ_TIMEOUT_MS}ms) - consecutive: $consecutiveTimeouts" }
+                                log.w { "⏱️ Monitor read timed out (${BleConstants.Timing.HEARTBEAT_READ_TIMEOUT_MS}ms) - consecutive: $consecutiveTimeouts" }
                             }
                             // Task 13: Disconnect after too many consecutive timeouts
-                            if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+                            if (consecutiveTimeouts >= BleConstants.Timing.MAX_CONSECUTIVE_TIMEOUTS) {
                                 log.e { "Too many consecutive timeouts ($consecutiveTimeouts), triggering disconnect" }
                                 _connectionState.value = ConnectionState.Disconnected
                                 scope.launch { disconnect() }
@@ -1777,7 +1659,7 @@ class KableBleRepository : BleRepository {
 
     override fun enableJustLiftWaitingMode() {
         log.i { "🎯 Enabling Just Lift waiting mode - ready for next set" }
-        log.i { "   Detection thresholds: grab pos>${HANDLE_GRABBED_THRESHOLD}mm + vel>${AUTO_START_VELOCITY_THRESHOLD}mm/s, release pos<${HANDLE_REST_THRESHOLD}mm" }
+        log.i { "   Detection thresholds: grab pos>${BleConstants.Thresholds.HANDLE_GRABBED_THRESHOLD}mm + vel>${BleConstants.Thresholds.AUTO_START_VELOCITY_THRESHOLD}mm/s, release pos<${BleConstants.Thresholds.HANDLE_REST_THRESHOLD}mm" }
 
         // Reset position tracking for diagnostics
         minPositionSeen = Double.MAX_VALUE
@@ -1867,8 +1749,8 @@ class KableBleRepository : BleRepository {
             log.i { "========== WORKOUT ANALYSIS ==========" }
             log.i { "Position range: min=$minPositionSeen, max=$maxPositionSeen" }
             log.i { "Detection thresholds (auto-start mode uses lower velocity):" }
-            log.i { "  Handle grab: pos > $HANDLE_GRABBED_THRESHOLD + velocity > ${if (isAutoStartMode) AUTO_START_VELOCITY_THRESHOLD else VELOCITY_THRESHOLD}${if (isAutoStartMode) " (auto-start)" else ""}" }
-            log.i { "  Handle release: pos < $HANDLE_REST_THRESHOLD" }
+            log.i { "  Handle grab: pos > ${BleConstants.Thresholds.HANDLE_GRABBED_THRESHOLD} + velocity > ${if (isAutoStartMode) BleConstants.Thresholds.AUTO_START_VELOCITY_THRESHOLD else BleConstants.Thresholds.VELOCITY_THRESHOLD}${if (isAutoStartMode) " (auto-start)" else ""}" }
+            log.i { "  Handle release: pos < ${BleConstants.Thresholds.HANDLE_REST_THRESHOLD}" }
             log.i { "======================================" }
         }
 
@@ -2064,13 +1946,13 @@ class KableBleRepository : BleRepository {
             // ===== POSITION VALIDATION (matching parent repo) =====
             // Validate position range and use last good value if invalid
             // Per official app documentation, valid range is -1000 to +1000 mm
-            if (posA !in MIN_POSITION.toFloat()..MAX_POSITION.toFloat()) {
+            if (posA !in BleConstants.Thresholds.MIN_POSITION.toFloat()..BleConstants.Thresholds.MAX_POSITION.toFloat()) {
                 log.w { "Position A out of range: $posA, using last good: $lastGoodPosA" }
                 posA = lastGoodPosA
             } else {
                 lastGoodPosA = posA
             }
-            if (posB !in MIN_POSITION.toFloat()..MAX_POSITION.toFloat()) {
+            if (posB !in BleConstants.Thresholds.MIN_POSITION.toFloat()..BleConstants.Thresholds.MAX_POSITION.toFloat()) {
                 log.w { "Position B out of range: $posB, using last good: $lastGoodPosB" }
                 posB = lastGoodPosB
             } else {
@@ -2163,10 +2045,10 @@ class KableBleRepository : BleRepository {
                 smoothedVelocityB = rawVelocityB
                 isFirstVelocitySample = false
             } else {
-                smoothedVelocityA = VELOCITY_SMOOTHING_ALPHA * rawVelocityA +
-                        (1 - VELOCITY_SMOOTHING_ALPHA) * smoothedVelocityA
-                smoothedVelocityB = VELOCITY_SMOOTHING_ALPHA * rawVelocityB +
-                        (1 - VELOCITY_SMOOTHING_ALPHA) * smoothedVelocityB
+                smoothedVelocityA = BleConstants.Thresholds.VELOCITY_SMOOTHING_ALPHA * rawVelocityA +
+                        (1 - BleConstants.Thresholds.VELOCITY_SMOOTHING_ALPHA) * smoothedVelocityA
+                smoothedVelocityB = BleConstants.Thresholds.VELOCITY_SMOOTHING_ALPHA * rawVelocityB +
+                        (1 - BleConstants.Thresholds.VELOCITY_SMOOTHING_ALPHA) * smoothedVelocityB
             }
 
             // Update timestamp for next velocity calculation
@@ -2240,7 +2122,7 @@ class KableBleRepository : BleRepository {
 
             // Emit deload event (debounced) for repository/ViewModel to handle
             val now = currentTimeMillis()
-            if (now - lastDeloadEventTime > DELOAD_EVENT_DEBOUNCE_MS) {
+            if (now - lastDeloadEventTime > BleConstants.Timing.DELOAD_EVENT_DEBOUNCE_MS) {
                 lastDeloadEventTime = now
                 scope.launch {
                     log.d { "DELOAD_OCCURRED: Emitting event" }
@@ -2271,15 +2153,15 @@ class KableBleRepository : BleRepository {
         previousPosA: Float, previousPosB: Float
     ): Boolean {
         // Official app range: -1000 to +1000 mm (Float for mm precision - Issue #197)
-        if (posA !in MIN_POSITION.toFloat()..MAX_POSITION.toFloat() ||
-            posB !in MIN_POSITION.toFloat()..MAX_POSITION.toFloat()) {
-            log.w { "Position out of range: posA=$posA, posB=$posB (valid: $MIN_POSITION to $MAX_POSITION mm)" }
+        if (posA !in BleConstants.Thresholds.MIN_POSITION.toFloat()..BleConstants.Thresholds.MAX_POSITION.toFloat() ||
+            posB !in BleConstants.Thresholds.MIN_POSITION.toFloat()..BleConstants.Thresholds.MAX_POSITION.toFloat()) {
+            log.w { "Position out of range: posA=$posA, posB=$posB (valid: ${BleConstants.Thresholds.MIN_POSITION} to ${BleConstants.Thresholds.MAX_POSITION} mm)" }
             return false
         }
 
         // Task 8: Load validation - check against hardware max weight
-        if (loadA < 0f || loadA > MAX_WEIGHT_KG || loadB < 0f || loadB > MAX_WEIGHT_KG) {
-            log.w { "Load out of range: loadA=$loadA, loadB=$loadB (max=$MAX_WEIGHT_KG)" }
+        if (loadA < 0f || loadA > BleConstants.Thresholds.MAX_WEIGHT_KG || loadB < 0f || loadB > BleConstants.Thresholds.MAX_WEIGHT_KG) {
+            log.w { "Load out of range: loadA=$loadA, loadB=$loadB (max=${BleConstants.Thresholds.MAX_WEIGHT_KG})" }
             return false
         }
 
@@ -2289,8 +2171,8 @@ class KableBleRepository : BleRepository {
         if (strictValidationEnabled && lastTimestamp > 0L) {
             val jumpA = kotlin.math.abs(posA - previousPosA)
             val jumpB = kotlin.math.abs(posB - previousPosB)
-            if (jumpA > POSITION_JUMP_THRESHOLD || jumpB > POSITION_JUMP_THRESHOLD) {
-                log.w { "⚠️ Position jump filtered: jumpA=${jumpA}mm, jumpB=${jumpB}mm (threshold: ${POSITION_JUMP_THRESHOLD}mm)" }
+            if (jumpA > BleConstants.Thresholds.POSITION_JUMP_THRESHOLD || jumpB > BleConstants.Thresholds.POSITION_JUMP_THRESHOLD) {
+                log.w { "⚠️ Position jump filtered: jumpA=${jumpA}mm, jumpB=${jumpB}mm (threshold: ${BleConstants.Thresholds.POSITION_JUMP_THRESHOLD}mm)" }
                 return false
             }
         }
@@ -2335,19 +2217,19 @@ class KableBleRepository : BleRepository {
         // Check handles - support single-handle exercises
         // NOTE: Use abs(velocity) since velocity is now signed (Issue #204 fix)
         // Issue #96: Use lower velocity threshold for auto-start grab detection
-        val velocityThreshold = if (isAutoStartMode) AUTO_START_VELOCITY_THRESHOLD else VELOCITY_THRESHOLD
+        val velocityThreshold = if (isAutoStartMode) BleConstants.Thresholds.AUTO_START_VELOCITY_THRESHOLD else BleConstants.Thresholds.VELOCITY_THRESHOLD
 
         // Issue #176: Use relative position change when baseline is set (for overhead pulley setups)
         // When cables can't reach absolute rest position, detect grabs via delta from baseline
         val handleAGrabbed = if (restBaselinePosA != null) {
-            (posA - restBaselinePosA!!) > GRAB_DELTA_THRESHOLD
+            (posA - restBaselinePosA!!) > BleConstants.Thresholds.GRAB_DELTA_THRESHOLD
         } else {
-            posA > HANDLE_GRABBED_THRESHOLD
+            posA > BleConstants.Thresholds.HANDLE_GRABBED_THRESHOLD
         }
         val handleBGrabbed = if (restBaselinePosB != null) {
-            (posB - restBaselinePosB!!) > GRAB_DELTA_THRESHOLD
+            (posB - restBaselinePosB!!) > BleConstants.Thresholds.GRAB_DELTA_THRESHOLD
         } else {
-            posB > HANDLE_GRABBED_THRESHOLD
+            posB > BleConstants.Thresholds.HANDLE_GRABBED_THRESHOLD
         }
         val handleAMoving = kotlin.math.abs(velocityA) > velocityThreshold
         val handleBMoving = kotlin.math.abs(velocityB) > velocityThreshold
@@ -2355,15 +2237,15 @@ class KableBleRepository : BleRepository {
         // Periodic diagnostic logging (every 200 samples at high poll rate)
         handleStateLogCounter++
         if (handleStateLogCounter % 200 == 0L) {
-            log.i { "🎯 HANDLE STATE: $currentState | posA=${posA.format(1)}mm posB=${posB.format(1)}mm | velA=${velocityA.format(0)} velB=${velocityB.format(0)} | thresholds: rest<$HANDLE_REST_THRESHOLD grab>$HANDLE_GRABBED_THRESHOLD vel>$velocityThreshold${if (isAutoStartMode) " (auto-start)" else ""}" }
+            log.i { "🎯 HANDLE STATE: $currentState | posA=${posA.format(1)}mm posB=${posB.format(1)}mm | velA=${velocityA.format(0)} velB=${velocityB.format(0)} | thresholds: rest<${BleConstants.Thresholds.HANDLE_REST_THRESHOLD} grab>${BleConstants.Thresholds.HANDLE_GRABBED_THRESHOLD} vel>$velocityThreshold${if (isAutoStartMode) " (auto-start)" else ""}" }
         }
 
         return when (currentState) {
             HandleState.WaitingForRest -> {
                 // MUST see handles at rest before arming grab detection
                 // This prevents immediate auto-start if cables already have tension
-                if (posA < HANDLE_REST_THRESHOLD && posB < HANDLE_REST_THRESHOLD) {
-                    log.i { "✅ Handles at REST (posA=$posA, posB=$posB < $HANDLE_REST_THRESHOLD) - auto-start now ARMED" }
+                if (posA < BleConstants.Thresholds.HANDLE_REST_THRESHOLD && posB < BleConstants.Thresholds.HANDLE_REST_THRESHOLD) {
+                    log.i { "✅ Handles at REST (posA=$posA, posB=$posB < ${BleConstants.Thresholds.HANDLE_REST_THRESHOLD}) - auto-start now ARMED" }
                     waitingForRestStartTime = null
                     // Issue #176: Capture baseline position (will be ~0 for normal setups)
                     restBaselinePosA = posA
@@ -2378,18 +2260,18 @@ class KableBleRepository : BleRepository {
                         // Start timeout timer
                         waitingForRestStartTime = currentTime
                         HandleState.WaitingForRest
-                    } else if (currentTime - waitingForRestStartTime!! > WAITING_FOR_REST_TIMEOUT_MS) {
+                    } else if (currentTime - waitingForRestStartTime!! > BleConstants.Timing.WAITING_FOR_REST_TIMEOUT_MS) {
                         // Issue #176: When timeout fires, check if handles are already grabbed
                         // If user is already holding handles (position > threshold), use virtual
                         // baseline of 0 so grab detection triggers immediately when they move.
                         // Otherwise, use current position as baseline for elevated rest setups.
-                        val alreadyGrabbed = posA > HANDLE_GRABBED_THRESHOLD || posB > HANDLE_GRABBED_THRESHOLD
+                        val alreadyGrabbed = posA > BleConstants.Thresholds.HANDLE_GRABBED_THRESHOLD || posB > BleConstants.Thresholds.HANDLE_GRABBED_THRESHOLD
                         if (alreadyGrabbed) {
-                            log.w { "⚠️ WaitingForRest TIMEOUT - handles already grabbed (posA=$posA, posB=$posB > $HANDLE_GRABBED_THRESHOLD) - using virtual baseline=0 for immediate grab detection" }
+                            log.w { "⚠️ WaitingForRest TIMEOUT - handles already grabbed (posA=$posA, posB=$posB > ${BleConstants.Thresholds.HANDLE_GRABBED_THRESHOLD}) - using virtual baseline=0 for immediate grab detection" }
                             restBaselinePosA = 0.0
                             restBaselinePosB = 0.0
                         } else {
-                            log.w { "⚠️ WaitingForRest TIMEOUT (${WAITING_FOR_REST_TIMEOUT_MS}ms) - capturing baseline posA=$posA, posB=$posB for relative grab detection" }
+                            log.w { "⚠️ WaitingForRest TIMEOUT (${BleConstants.Timing.WAITING_FOR_REST_TIMEOUT_MS}ms) - capturing baseline posA=$posA, posB=$posB for relative grab detection" }
                             restBaselinePosA = posA
                             restBaselinePosB = posB
                         }
@@ -2415,7 +2297,7 @@ class KableBleRepository : BleRepository {
                             // Start dwell timer
                             pendingGrabbedStartTime = currentTime
                             currentState  // Stay in current state
-                        } else if (currentTime - pendingGrabbedStartTime!! >= STATE_TRANSITION_DWELL_MS) {
+                        } else if (currentTime - pendingGrabbedStartTime!! >= BleConstants.Timing.STATE_TRANSITION_DWELL_MS) {
                             // GRAB CONFIRMED - position AND velocity thresholds met for 200ms
                             val activeHandle = when {
                                 aActive && bActive -> "both"
@@ -2424,7 +2306,7 @@ class KableBleRepository : BleRepository {
                             }
                             // Store which handle(s) are active for release detection
                             activeHandlesMask = (if (aActive) 1 else 0) or (if (bActive) 2 else 0)
-                            log.i { "🔥 GRAB CONFIRMED: handle=$activeHandle mask=$activeHandlesMask (posA=${posA.format(1)}, posB=${posB.format(1)}, velA=${velocityA.format(0)}, velB=${velocityB.format(0)}) after ${STATE_TRANSITION_DWELL_MS}ms dwell" }
+                            log.i { "🔥 GRAB CONFIRMED: handle=$activeHandle mask=$activeHandlesMask (posA=${posA.format(1)}, posB=${posB.format(1)}, velA=${velocityA.format(0)}, velB=${velocityB.format(0)}) after ${BleConstants.Timing.STATE_TRANSITION_DWELL_MS}ms dwell" }
                             pendingGrabbedStartTime = null
                             HandleState.Grabbed
                         } else {
@@ -2448,14 +2330,14 @@ class KableBleRepository : BleRepository {
                 // Release detection: only check handles that were actually grabbed
                 // Issue #176: Use baseline-relative release detection for overhead pulley setups
                 val aReleased = if (restBaselinePosA != null) {
-                    (posA - restBaselinePosA!!) < RELEASE_DELTA_THRESHOLD
+                    (posA - restBaselinePosA!!) < BleConstants.Thresholds.RELEASE_DELTA_THRESHOLD
                 } else {
-                    posA < HANDLE_REST_THRESHOLD  // Backwards compatible
+                    posA < BleConstants.Thresholds.HANDLE_REST_THRESHOLD  // Backwards compatible
                 }
                 val bReleased = if (restBaselinePosB != null) {
-                    (posB - restBaselinePosB!!) < RELEASE_DELTA_THRESHOLD
+                    (posB - restBaselinePosB!!) < BleConstants.Thresholds.RELEASE_DELTA_THRESHOLD
                 } else {
-                    posB < HANDLE_REST_THRESHOLD  // Backwards compatible
+                    posB < BleConstants.Thresholds.HANDLE_REST_THRESHOLD  // Backwards compatible
                 }
 
                 // Only check release on the handle(s) that were actually grabbed.
@@ -2474,8 +2356,8 @@ class KableBleRepository : BleRepository {
                         // Start dwell timer
                         pendingReleasedStartTime = currentTime
                         HandleState.Grabbed  // Stay grabbed
-                    } else if (currentTime - pendingReleasedStartTime!! >= STATE_TRANSITION_DWELL_MS) {
-                        log.d { "RELEASE DETECTED (mask=$activeHandlesMask): posA=$posA (baseline=${restBaselinePosA ?: "none"}), posB=$posB (baseline=${restBaselinePosB ?: "none"}) after ${STATE_TRANSITION_DWELL_MS}ms dwell" }
+                    } else if (currentTime - pendingReleasedStartTime!! >= BleConstants.Timing.STATE_TRANSITION_DWELL_MS) {
+                        log.d { "RELEASE DETECTED (mask=$activeHandlesMask): posA=$posA (baseline=${restBaselinePosA ?: "none"}), posB=$posB (baseline=${restBaselinePosB ?: "none"}) after ${BleConstants.Timing.STATE_TRANSITION_DWELL_MS}ms dwell" }
                         pendingReleasedStartTime = null
                         activeHandlesMask = 0  // Reset for next grab
                         HandleState.Released
