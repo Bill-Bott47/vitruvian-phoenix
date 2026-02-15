@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 5 of 12 (BleProtocolConstants)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-02-15 — Roadmap created for v0.4.2 milestone
+Plan: 1 of 1 in current phase
+Status: Phase 5 complete
+Last activity: 2026-02-15 — Completed 05-01-PLAN.md (BleProtocolConstants extraction)
 
-Progress: [                    ] 0%
+Progress: [##                  ] 8% (1/12 phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0 (v0.4.2 milestone)
-- Average duration: - min
-- Total execution time: 0 hours
+- Total plans completed: 1 (v0.4.2 milestone)
+- Average duration: 10 min
+- Total execution time: 0.17 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 05-ble-protocol-constants | 1 | 10min | 10min |
 
 **Recent Trend:**
-- Last 5 plans: N/A
-- Trend: Starting fresh
+- Last 5 plans: 05-01 (10min)
+- Trend: Starting v0.4.2
 
 *Updated after each plan completion*
 
@@ -46,6 +46,8 @@ Recent decisions affecting current work:
 - [v0.4.1]: bleErrorEvents SharedFlow for BLE->DWSM communication
 - [v0.4.1]: Feature-scoped Koin modules with verify()
 - [v0.4.2]: 8-module decomposition pattern (no DI changes)
+- [05-01]: Nested object pattern for BleConstants.Timing and BleConstants.Thresholds
+- [05-01]: Pre-built Kable characteristic references in BleConstants
 
 ### Pending Todos
 
@@ -58,5 +60,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Roadmap created for v0.4.2 BLE Layer Decomposition
+Stopped at: Completed 05-01-PLAN.md (Phase 5 BleProtocolConstants complete)
 Resume file: None
