@@ -38,6 +38,7 @@ import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
+import com.devil.phoenixproject.data.ble.BleOperationQueue
 import com.devil.phoenixproject.data.ble.requestHighPriority
 import com.devil.phoenixproject.data.ble.requestMtuIfSupported
 import com.devil.phoenixproject.data.ble.parseRepPacket
@@ -224,38 +225,8 @@ class KableBleRepository : BleRepository {
     // Polling mutex to prevent race conditions (Task 4)
     private val monitorPollingMutex = Mutex()
 
-    // Issue #222: Global BLE operation mutex to serialize ALL reads/writes
-    // Prevents interleaving that causes fault 16384 command rejection
-    private val bleOperationMutex = Mutex()
-
-    /**
-     * Issue #222: Serialized BLE read operation.
-     * All BLE reads go through this to prevent interleaving with writes.
-     */
-    private suspend fun <T> serializedRead(
-        characteristic: com.juul.kable.Characteristic,
-        p: Peripheral,
-        operation: suspend () -> T
-    ): T {
-        return bleOperationMutex.withLock {
-            operation()
-        }
-    }
-
-    /**
-     * Issue #222: Serialized BLE write operation.
-     * All BLE writes go through this to prevent interleaving with reads.
-     */
-    private suspend fun serializedWrite(
-        p: Peripheral,
-        characteristic: com.juul.kable.Characteristic,
-        data: ByteArray,
-        writeType: WriteType
-    ) {
-        bleOperationMutex.withLock {
-            p.write(characteristic, data, writeType)
-        }
-    }
+    // Issue #222: All BLE operations serialized through single queue
+    private val bleQueue = BleOperationQueue()
 
     // Diagnostic polling job (500ms keep-alive)
     private var diagnosticPollingJob: kotlinx.coroutines.Job? = null
@@ -870,7 +841,7 @@ class KableBleRepository : BleRepository {
      */
     private suspend fun performHeartbeatRead(p: Peripheral): Boolean {
         return try {
-            bleOperationMutex.withLock {
+            bleQueue.read {
                 // Issue #222 v15: Read TX char to match parent (will typically fail)
                 p.read(txCharacteristic)
             }
@@ -889,10 +860,7 @@ class KableBleRepository : BleRepository {
      */
     private suspend fun sendHeartbeatNoOp(p: Peripheral) {
         try {
-            bleOperationMutex.withLock {
-                // Issue #222 v15.1: V-Form only supports WithResponse
-                p.write(txCharacteristic, BleConstants.HEARTBEAT_NO_OP, WriteType.WithResponse)
-            }
+            bleQueue.writeSimple(p, txCharacteristic, BleConstants.HEARTBEAT_NO_OP, WriteType.WithResponse)
             log.v { "Heartbeat no-op write sent" }
         } catch (e: Exception) {
             log.w { "Heartbeat no-op write failed: ${e.message}" }
@@ -1012,9 +980,7 @@ class KableBleRepository : BleRepository {
     private suspend fun tryReadFirmwareVersion(p: Peripheral) {
         try {
             val data = withTimeoutOrNull(2000L) {
-                bleOperationMutex.withLock {
-                    p.read(firmwareRevisionCharacteristic)
-                }
+                bleQueue.read { p.read(firmwareRevisionCharacteristic) }
             }
             if (data != null && data.isNotEmpty()) {
                 detectedFirmwareVersion = data.decodeToString().trim()
@@ -1040,9 +1006,7 @@ class KableBleRepository : BleRepository {
     private suspend fun tryReadVitruvianVersion(p: Peripheral) {
         try {
             val data = withTimeoutOrNull(2000L) {
-                bleOperationMutex.withLock {
-                    p.read(versionCharacteristic)
-                }
+                bleQueue.read { p.read(versionCharacteristic) }
             }
             if (data != null && data.isNotEmpty()) {
                 val hexString = data.joinToString(" ") { it.toHexString() }
@@ -1069,9 +1033,7 @@ class KableBleRepository : BleRepository {
             while (_connectionState.value is ConnectionState.Connected && isActive) {
                 try {
                     val data = withTimeoutOrNull(BleConstants.Timing.HEARTBEAT_READ_TIMEOUT_MS) {
-                        bleOperationMutex.withLock {
-                            p.read(diagnosticCharacteristic)
-                        }
+                        bleQueue.read { p.read(diagnosticCharacteristic) }
                     }
 
                     if (data != null) {
@@ -1120,9 +1082,7 @@ class KableBleRepository : BleRepository {
             while (_connectionState.value is ConnectionState.Connected && isActive) {
                 try {
                     val data = withTimeoutOrNull(BleConstants.Timing.HEARTBEAT_READ_TIMEOUT_MS) {
-                        bleOperationMutex.withLock {
-                            p.read(heuristicCharacteristic)
-                        }
+                        bleQueue.read { p.read(heuristicCharacteristic) }
                     }
 
                     if (data != null && data.isNotEmpty()) {
@@ -1271,9 +1231,7 @@ class KableBleRepository : BleRepository {
                         // BLE stack can sometimes fail to return success/failure callback
                         // This matches parent repo's withTimeoutOrNull pattern
                         val data = withTimeoutOrNull(BleConstants.Timing.HEARTBEAT_READ_TIMEOUT_MS) {
-                            bleOperationMutex.withLock {
-                                p.read(monitorCharacteristic)
-                            }
+                            bleQueue.read { p.read(monitorCharacteristic) }
                         }
 
                         if (data != null) {
@@ -1385,103 +1343,63 @@ class KableBleRepository : BleRepository {
         }
 
         val commandHex = command.joinToString(" ") { it.toHexString() }
+        log.d { "Sending ${command.size}-byte command to NUS TX" }
+        log.d { "Command hex: $commandHex" }
 
-        // Send to NUS TX using WriteWithResponse (V-Form only supports this mode)
-        // Note: V-Form devices do NOT advertise WriteWithoutResponse property
-        // Issue #125: Retry on WriteRequestBusy with exponential backoff
-        val maxRetries = 3
-        var lastException: Exception? = null
+        // Issue #222: Log queue state before acquiring for debugging
+        log.d { "BLE queue locked: ${bleQueue.isLocked}, acquiring..." }
 
-        for (attempt in 0 until maxRetries) {
-            try {
-                if (attempt > 0) {
-                    log.d { "Retry attempt $attempt for ${command.size}-byte command" }
-                } else {
-                    log.d { "Sending ${command.size}-byte command to NUS TX" }
-                    log.d { "Command hex: $commandHex" }
-                }
+        val attemptStart = currentTimeMillis()
+        val result = bleQueue.write(p, txCharacteristic, command, WriteType.WithResponse)
 
-                // Issue #222: Log mutex state before acquiring for debugging
-                log.d { "BLE mutex locked: ${bleOperationMutex.isLocked}, acquiring..." }
+        if (result.isSuccess) {
+            val elapsedMs = currentTimeMillis() - attemptStart
+            log.d { "TX write ok: size=${command.size}, type=WithResponse, elapsed=${elapsedMs}ms" }
+            log.i { "Command sent via NUS TX: ${command.size} bytes" }
 
-                val attemptStart = currentTimeMillis()
-                bleOperationMutex.withLock {
-                    log.d { "BLE mutex acquired, sending command" }
-                    // Issue #222 v15.1: V-Form devices only support WithResponse
-                    // Parent uses NoResponse but V-Form doesn't advertise that capability
-                    p.write(txCharacteristic, command, WriteType.WithResponse)
-                }
-                val elapsedMs = currentTimeMillis() - attemptStart
-                log.d { "TX write ok: size=${command.size}, type=WithResponse, elapsed=${elapsedMs}ms, attempt=${attempt + 1}" }
-                log.i { "✅ Command sent via NUS TX: ${command.size} bytes" }
-
-                // Issue #222 v16 (optional): One-shot diagnostic read after CONFIG to catch early faults.
-                val isEchoConfig = command.size == 32 && command[0] == 0x4E.toByte()
-                val isProgramConfig = command.size == 96 && command[0] == 0x04.toByte()
-                if (isEchoConfig || isProgramConfig) {
-                    val delayMs = if (isProgramConfig) 350L else 200L
-                    scope.launch {
-                        delay(delayMs)
-                        try {
-                            val data = withTimeoutOrNull(500L) {
-                                bleOperationMutex.withLock {
-                                    p.read(diagnosticCharacteristic)
-                                }
-                            }
-                            if (data != null) {
-                                log.d { "Post-CONFIG diagnostic read (${data.size} bytes)" }
-                                parseDiagnosticData(data)
-                            } else {
-                                log.d { "Post-CONFIG diagnostic read timed out" }
-                            }
-                        } catch (e: Exception) {
-                            log.w { "Post-CONFIG diagnostic read failed: ${e.message}" }
+            // Issue #222 v16 (optional): One-shot diagnostic read after CONFIG to catch early faults.
+            val isEchoConfig = command.size == 32 && command[0] == 0x4E.toByte()
+            val isProgramConfig = command.size == 96 && command[0] == 0x04.toByte()
+            if (isEchoConfig || isProgramConfig) {
+                val delayMs = if (isProgramConfig) 350L else 200L
+                scope.launch {
+                    delay(delayMs)
+                    try {
+                        val data = withTimeoutOrNull(500L) {
+                            bleQueue.read { p.read(diagnosticCharacteristic) }
                         }
+                        if (data != null) {
+                            log.d { "Post-CONFIG diagnostic read (${data.size} bytes)" }
+                            parseDiagnosticData(data)
+                        } else {
+                            log.d { "Post-CONFIG diagnostic read timed out" }
+                        }
+                    } catch (e: Exception) {
+                        log.w { "Post-CONFIG diagnostic read failed: ${e.message}" }
                     }
                 }
-
-                logRepo.debug(
-                    LogEventType.COMMAND_SENT,
-                    "Command sent (NUS TX)",
-                    connectedDeviceName,
-                    connectedDeviceAddress,
-                    "Size: ${command.size} bytes"
-                )
-                return Result.success(Unit)
-            } catch (e: Exception) {
-                lastException = e
-                // Check if this is a WriteRequestBusy error (retryable)
-                val isBusyError = e.message?.contains("Busy", ignoreCase = true) == true ||
-                    e.message?.contains("WriteRequestBusy", ignoreCase = true) == true
-
-                if (isBusyError && attempt < maxRetries - 1) {
-                    val delayMs = 50L * (attempt + 1)  // 50ms, 100ms, 150ms
-                    log.w { "BLE write busy, retrying in ${delayMs}ms (attempt ${attempt + 1}/$maxRetries)" }
-                    logRepo.warning(
-                        LogEventType.ERROR,
-                        "Write busy, retrying",
-                        connectedDeviceName,
-                        connectedDeviceAddress,
-                        "Attempt ${attempt + 1}, delay ${delayMs}ms"
-                    )
-                    kotlinx.coroutines.delay(delayMs)
-                } else {
-                    // Non-retryable error or max retries reached
-                    break
-                }
             }
-        }
 
-        // All retries failed
-        log.e { "Failed to send command after $maxRetries attempts: ${lastException?.message}" }
-        logRepo.error(
-            LogEventType.ERROR,
-            "Failed to send command",
-            connectedDeviceName,
-            connectedDeviceAddress,
-            lastException?.message
-        )
-        return Result.failure(lastException ?: IllegalStateException("Unknown error"))
+            logRepo.debug(
+                LogEventType.COMMAND_SENT,
+                "Command sent (NUS TX)",
+                connectedDeviceName,
+                connectedDeviceAddress,
+                "Size: ${command.size} bytes"
+            )
+            return Result.success(Unit)
+        } else {
+            val ex = result.exceptionOrNull()
+            log.e { "Failed to send command after retries: ${ex?.message}" }
+            logRepo.error(
+                LogEventType.ERROR,
+                "Failed to send command",
+                connectedDeviceName,
+                connectedDeviceAddress,
+                ex?.message
+            )
+            return Result.failure(ex ?: IllegalStateException("Unknown error"))
+        }
     }
 
     // ===== HIGH-LEVEL WORKOUT CONTROL (parity with parent repo) =====
