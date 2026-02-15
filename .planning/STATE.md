@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Core value:** Users can connect to their Vitruvian trainer and execute workouts reliably on both platforms.
-**Current focus:** Phase 9 - Handle State Detector - COMPLETE
+**Current focus:** Phase 10 - Monitor Data Processor
 
 ## Current Position
 
-Phase: 9 of 12 (Handle State Detector) - COMPLETE
-Plan: 2 of 2 in current phase - COMPLETE
-Status: Phase 09 Complete
-Last activity: 2026-02-15 — Completed 09-02-PLAN.md (KableBleRepository delegation)
+Phase: 10 of 12 (Monitor Data Processor)
+Plan: 1 of 2 in current phase - COMPLETE
+Status: Plan 10-01 Complete
+Last activity: 2026-02-15 — Completed 10-01-PLAN.md (MonitorDataProcessor TDD extraction)
 
-Progress: [#####               ] 42% (5/12 phases)
+Progress: [######              ] 50% (6/12 phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7 (v0.4.2 milestone)
-- Average duration: 9 min
-- Total execution time: 1.07 hours
+- Total plans completed: 8 (v0.4.2 milestone)
+- Average duration: 10 min
+- Total execution time: 1.27 hours
 
 **By Phase:**
 
@@ -32,9 +32,10 @@ Progress: [#####               ] 42% (5/12 phases)
 | 07-ble-operation-queue | 1 | 8min | 8min |
 | 08-disco-mode-interface | 1 | 6min | 6min |
 | 09-handle-state-detector | 2 | 26min | 13min |
+| 10-monitor-data-processor | 1 | 12min | 12min |
 
 **Recent Trend:**
-- Last 5 plans: 06-02 (11min), 07-01 (8min), 08-01 (6min), 09-01 (9min), 09-02 (17min)
+- Last 5 plans: 07-01 (8min), 08-01 (6min), 09-01 (9min), 09-02 (17min), 10-01 (12min)
 - Trend: Consistent execution ~10min average
 
 *Updated after each plan completion*
@@ -68,6 +69,9 @@ Recent decisions affecting current work:
 - [09-02]: handleDetector property inline (no DI) matching bleQueue and discoMode delegation pattern
 - [09-02]: stopPolling() reads handleDetector.minPositionSeen/maxPositionSeen/isAutoStartMode directly
 - [09-02]: enableHandleDetection() calls handleDetector.enable() before startMonitorPolling()
+- [10-01]: EMA cold start: seed with first real velocity (lastTimestamp > 0), not first-ever zero
+- [10-01]: Position range constants as companion vals (avoid repeated Int.toFloat() on hot path)
+- [10-01]: calculateRawVelocity() helper eliminates A/B duplication in velocity calculation
 
 ### Pending Todos
 
@@ -80,5 +84,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 09-02-PLAN.md (KableBleRepository delegation) - Phase 09 COMPLETE
+Stopped at: Completed 10-01-PLAN.md (MonitorDataProcessor TDD extraction)
 Resume file: None
