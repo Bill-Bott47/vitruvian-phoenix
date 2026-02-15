@@ -17,7 +17,7 @@ Decompose the 2,886-line KableBleRepository monolith into 8 focused, testable mo
 - Phases 5-12: v0.4.2 BLE Layer Decomposition (current milestone)
 - Decimal phases (e.g., 5.1): Urgent insertions if needed
 
-- [ ] **Phase 5: BleProtocolConstants** - Extract UUIDs and timing constants (zero risk)
+- [x] **Phase 5: BleProtocolConstants** - Extract UUIDs and timing constants (zero risk) ✓ 2026-02-15
 - [ ] **Phase 6: ProtocolParser** - Extract stateless byte parsing functions (zero risk)
 - [ ] **Phase 7: BleOperationQueue** - Extract Mutex-based BLE serialization (low risk)
 - [ ] **Phase 8: DiscoMode + Interface** - Extract easter egg and fix concrete cast (zero risk)
@@ -127,7 +127,7 @@ Phases 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11 -> 12
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 5. BleProtocolConstants | v0.4.2 | 0/1 | Planned | - |
+| 5. BleProtocolConstants | v0.4.2 | 1/1 | Complete | 2026-02-15 |
 | 6. ProtocolParser | v0.4.2 | 0/? | Not started | - |
 | 7. BleOperationQueue | v0.4.2 | 0/? | Not started | - |
 | 8. DiscoMode + Interface | v0.4.2 | 0/? | Not started | - |

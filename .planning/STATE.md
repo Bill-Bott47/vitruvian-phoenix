@@ -5,13 +5,13 @@
 See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Core value:** Users can connect to their Vitruvian trainer and execute workouts reliably on both platforms.
-**Current focus:** Phase 5 - BleProtocolConstants
+**Current focus:** Phase 6 - ProtocolParser
 
 ## Current Position
 
-Phase: 5 of 12 (BleProtocolConstants)
-Plan: 1 of 1 in current phase
-Status: Phase 5 complete
+Phase: 6 of 12 (ProtocolParser)
+Plan: 0 of ? in current phase
+Status: Ready to plan
 Last activity: 2026-02-15 — Completed 05-01-PLAN.md (BleProtocolConstants extraction)
 
 Progress: [##                  ] 8% (1/12 phases)
