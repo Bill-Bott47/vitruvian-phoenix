@@ -62,7 +62,8 @@ Decompose the 2,886-line KableBleRepository monolith into 8 focused, testable mo
   2. Concurrent BLE operations cannot interleave (Issue #222 prevention)
   3. Integration test verifies no fault 16384 under concurrent access
   4. Write retry logic (3 attempts) preserved
-**Plans**: TBD
+**Plans**: 1 plan
+  - [ ] 07-01-PLAN.md - Extract BleOperationQueue, update KableBleRepository to use queue
 
 ### Phase 8: DiscoMode + Interface
 **Goal**: Disco mode easter egg self-contained, concrete cast eliminated
@@ -131,7 +132,7 @@ Phases 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11 -> 12
 |-------|-----------|----------------|--------|-----------|
 | 5. BleProtocolConstants | v0.4.2 | 1/1 | Complete | 2026-02-15 |
 | 6. ProtocolParser | v0.4.2 | 0/2 | Planning complete | - |
-| 7. BleOperationQueue | v0.4.2 | 0/? | Not started | - |
+| 7. BleOperationQueue | v0.4.2 | 0/1 | Planning complete | - |
 | 8. DiscoMode + Interface | v0.4.2 | 0/? | Not started | - |
 | 9. HandleStateDetector | v0.4.2 | 0/? | Not started | - |
 | 10. MonitorDataProcessor | v0.4.2 | 0/? | Not started | - |
