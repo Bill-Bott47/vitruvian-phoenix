@@ -35,13 +35,15 @@ Users can connect to their Vitruvian trainer and execute workouts with accurate 
 
 <!-- Current scope. Building toward these. -->
 
-(Next milestone requirements to be defined via /gsd:new-milestone)
+**v0.4.2 - BLE Layer Decomposition**
+
+Goal: Decompose KableBleRepository (2,886 lines) into 8 focused, testable modules while preserving BleRepository interface contract.
+
+(Requirements defined in REQUIREMENTS.md)
 
 ### Out of Scope
 
 <!-- Explicit boundaries. Includes reasoning to prevent re-adding. -->
-
-- KableBleRepository decomposition — works reliably, refactoring risk outweighs benefit
 - Premium features (data foundation, biomechanics, intelligence) — deferred to post-cleanup milestone
 - New user-facing features — this milestone is purely architectural
 - iOS-specific UI work — focus is shared module and Android Compose layer
@@ -69,20 +71,25 @@ Users can connect to their Vitruvian trainer and execute workouts with accurate 
 - **BLE stability**: Do not touch KableBleRepository or BLE protocol code
 - **Incremental**: Each refactoring phase must leave the app in a buildable, working state
 
-## Current State
+## Current Milestone: v0.4.2 BLE Layer Decomposition
 
-**Version:** v0.4.1 (shipped 2026-02-13)
+**Goal:** Decompose KableBleRepository (2,886 lines, 10 subsystems, ~50 mutable state variables) into 8 focused, testable modules while preserving BleRepository interface.
 
-Architecture is clean and well-tested. Ready for feature development or premium features.
+**Target Architecture:**
+- `BleProtocolConstants` - UUIDs, timing, thresholds (immutable)
+- `BleOperationQueue` - Mutex-based BLE serialization (CRITICAL for Issue #222)
+- `ProtocolParser` - Pure functions for byte parsing (stateless)
+- `DiscoMode` - Easter egg LED cycling (self-contained)
+- `HandleStateDetector` - 4-state machine with baseline tracking (Issue #176)
+- `MonitorDataProcessor` - Position validation, velocity EMA (Issue #210)
+- `MetricPollingEngine` - All polling loops + heartbeat
+- `KableBleConnectionManager` - Scanning, connection lifecycle
 
-## Next Milestone Goals
-
-(To be defined via /gsd:new-milestone)
-
-Candidates:
-- Premium features (data foundation, biomechanics, intelligence) from OpenSpec specs
-- iOS UI polish
-- Performance optimization for handleMonitorMetric hot path
+**Constraints:**
+- No changes to BleRepository interface (except adding `setLastColorSchemeIndex`)
+- No changes to Koin DI modules
+- Each phase must leave codebase compilable and working
+- Manual BLE testing on physical device for phases 5-8
 
 ## Key Decisions
 
@@ -101,4 +108,4 @@ Candidates:
 | Feature-scoped Koin modules with verify() | Catches DI wiring issues at test time | ✓ Good — v0.4.1 |
 
 ---
-*Last updated: 2026-02-13 after v0.4.1 milestone completion*
+*Last updated: 2026-02-15 after v0.4.2 milestone start*
