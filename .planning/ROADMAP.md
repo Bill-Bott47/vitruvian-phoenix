@@ -74,7 +74,8 @@ Decompose the 2,886-line KableBleRepository monolith into 8 focused, testable mo
   2. DiscoMode.stop() restores last color scheme
   3. setLastColorSchemeIndex() available on BleRepository interface
   4. SettingsManager no longer casts to KableBleRepository (Issue #144 fixed)
-**Plans**: TBD
+**Plans**: 1 plan
+  - [ ] 08-01-PLAN.md — Extract DiscoMode.kt, add interface method, fix SettingsManager cast
 
 ### Phase 9: HandleStateDetector
 **Goal**: 4-state handle detection machine extracted and testable
@@ -133,7 +134,7 @@ Phases 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11 -> 12
 | 5. BleProtocolConstants | v0.4.2 | 1/1 | Complete | 2026-02-15 |
 | 6. ProtocolParser | v0.4.2 | 2/2 | Complete | 2026-02-15 |
 | 7. BleOperationQueue | v0.4.2 | 1/1 | Complete | 2026-02-15 |
-| 8. DiscoMode + Interface | v0.4.2 | 0/? | Not started | - |
+| 8. DiscoMode + Interface | v0.4.2 | 0/1 | Not started | - |
 | 9. HandleStateDetector | v0.4.2 | 0/? | Not started | - |
 | 10. MonitorDataProcessor | v0.4.2 | 0/? | Not started | - |
 | 11. MetricPollingEngine | v0.4.2 | 0/? | Not started | - |
