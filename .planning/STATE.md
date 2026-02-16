@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Core value:** Users can connect to their Vitruvian trainer and execute workouts reliably on both platforms.
-**Current focus:** Phase 10 Complete - Ready for Phase 11
+**Current focus:** Phase 12 In Progress - KableBleConnectionManager + Facade
 
 ## Current Position
 
-Phase: 10 of 12 (Monitor Data Processor) - COMPLETE
-Plan: 2 of 2 in current phase - COMPLETE
-Status: Phase 10 Complete
-Last activity: 2026-02-15 — Completed 10-02-PLAN.md (MonitorDataProcessor delegation)
+Phase: 12 of 12 (KableBleConnectionManager + Facade)
+Plan: 1 of 2 in current phase - COMPLETE
+Status: Plan 12-01 complete, ready for Plan 12-02 (facade delegation)
+Last activity: 2026-02-16 — Completed 12-01-PLAN.md (KableBleConnectionManager creation)
 
-Progress: [########            ] 58% (7/12 phases)
+Progress: [##########          ] 75% (9/12 phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9 (v0.4.2 milestone)
+- Total plans completed: 13 (v0.4.2 milestone)
 - Average duration: 9 min
-- Total execution time: 1.37 hours
+- Total execution time: 2.02 hours
 
 **By Phase:**
 
@@ -33,10 +33,12 @@ Progress: [########            ] 58% (7/12 phases)
 | 08-disco-mode-interface | 1 | 6min | 6min |
 | 09-handle-state-detector | 2 | 26min | 13min |
 | 10-monitor-data-processor | 2 | 18min | 9min |
+| 11-metric-polling-engine | 2/2 | 20min | 10min |
+| 12-ble-connection-facade | 1/2 | 7min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 08-01 (6min), 09-01 (9min), 09-02 (17min), 10-01 (12min), 10-02 (6min)
-- Trend: Consistent execution ~10min average
+- Last 5 plans: 10-02 (6min), 11-01 (12min), 11-02 (8min), 12-01 (7min)
+- Trend: Consistent execution ~8min average
 
 *Updated after each plan completion*
 
@@ -75,6 +77,18 @@ Recent decisions affecting current work:
 - [10-02]: Keep both RomViolationType enums (processor + repository) and map in callback for API stability
 - [10-02]: monitorProcessor declared after SharedFlow properties for init-order safety
 - [10-02]: Complete 4-module delegation: bleQueue, discoMode, handleDetector, monitorProcessor all inline properties
+- [11-01]: Test helpers (startFakeJobs) for lifecycle testing without Peripheral dependency
+- [11-01]: stopDiscoMode stays in KableBleRepository, engine doesn't reference DiscoMode
+- [11-01]: Connection state check uses coroutine isActive, not _connectionState flow
+- [11-01]: onConnectionLost launched in separate coroutine to avoid cancelling polling coroutine mid-cleanup
+- [11-02]: pollingEngine declared LAST among delegated modules (after bleQueue, handleDetector, monitorProcessor) for init-order safety
+- [11-02]: parseDiagnosticData stays in KableBleRepository (simplified, no fault-change tracking) for post-CONFIG one-shot reads
+- [11-02]: stopDiscoMode() placed before engine calls in enableHandleDetection, restartMonitorPolling, startActiveWorkoutPolling, startObservingNotifications
+- [11-02]: Complete 5-module delegation: bleQueue, discoMode, handleDetector, monitorProcessor, pollingEngine
+- [12-01]: lastReportedState tracking variable for stopScanning guard (avoids needing facade state)
+- [12-01]: processIncomingData/parseDiagnosticData made internal for testability (MetricPollingEngine pattern)
+- [12-01]: Self-contained _commandResponses SharedFlow + external callback dual emission for awaitResponse
+- [12-01]: Removed emoji characters from log messages for cleaner logging
 
 ### Pending Todos
 
@@ -86,6 +100,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-15
-Stopped at: Completed 10-02-PLAN.md (MonitorDataProcessor delegation)
+Last session: 2026-02-16
+Stopped at: Completed 12-01-PLAN.md (KableBleConnectionManager creation)
 Resume file: None
