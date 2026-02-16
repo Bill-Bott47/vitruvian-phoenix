@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Core value:** Users can connect to their Vitruvian trainer and execute workouts reliably on both platforms.
-**Current focus:** Phase 12 In Progress - KableBleConnectionManager + Facade
+**Current focus:** Phase 12 COMPLETE - KableBleConnectionManager + Facade (pending manual BLE verify)
 
 ## Current Position
 
 Phase: 12 of 12 (KableBleConnectionManager + Facade)
-Plan: 1 of 2 in current phase - COMPLETE
-Status: Plan 12-01 complete, ready for Plan 12-02 (facade delegation)
-Last activity: 2026-02-16 — Completed 12-01-PLAN.md (KableBleConnectionManager creation)
+Plan: 2 of 2 in current phase - COMPLETE (pending manual BLE verification checkpoint)
+Status: Plan 12-02 complete, awaiting manual BLE device testing
+Last activity: 2026-02-16 — Completed 12-02-PLAN.md (facade delegation)
 
-Progress: [##########          ] 75% (9/12 phases)
+Progress: [####################] 100% (12/12 phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13 (v0.4.2 milestone)
+- Total plans completed: 14 (v0.4.2 milestone)
 - Average duration: 9 min
-- Total execution time: 2.02 hours
+- Total execution time: 2.14 hours
 
 **By Phase:**
 
@@ -34,10 +34,10 @@ Progress: [##########          ] 75% (9/12 phases)
 | 09-handle-state-detector | 2 | 26min | 13min |
 | 10-monitor-data-processor | 2 | 18min | 9min |
 | 11-metric-polling-engine | 2/2 | 20min | 10min |
-| 12-ble-connection-facade | 1/2 | 7min | 7min |
+| 12-ble-connection-facade | 2/2 | 14min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 10-02 (6min), 11-01 (12min), 11-02 (8min), 12-01 (7min)
+- Last 5 plans: 11-01 (12min), 11-02 (8min), 12-01 (7min), 12-02 (7min)
 - Trend: Consistent execution ~8min average
 
 *Updated after each plan completion*
@@ -89,6 +89,9 @@ Recent decisions affecting current work:
 - [12-01]: processIncomingData/parseDiagnosticData made internal for testability (MetricPollingEngine pattern)
 - [12-01]: Self-contained _commandResponses SharedFlow + external callback dual emission for awaitResponse
 - [12-01]: Removed emoji characters from log messages for cleaner logging
+- [12-02]: lateinit + init block for connectionManager to break Kotlin compiler recursive type inference
+- [12-02]: Device name/address omitted from facade logRepo.debug calls (ConnectionManager owns that context)
+- [12-02]: Complete 6-module delegation: bleQueue, discoMode, handleDetector, monitorProcessor, pollingEngine, connectionManager
 
 ### Pending Todos
 
@@ -101,5 +104,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 12-01-PLAN.md (KableBleConnectionManager creation)
+Stopped at: Completed 12-02-PLAN.md (facade delegation) — checkpoint: manual BLE verify pending
 Resume file: None
