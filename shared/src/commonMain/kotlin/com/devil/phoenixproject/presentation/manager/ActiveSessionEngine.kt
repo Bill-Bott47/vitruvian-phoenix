@@ -249,11 +249,10 @@ class ActiveSessionEngine(
         metrics: List<WorkoutMetric>,
         repCount: Int,
         fallbackWeightKg: Float,
+        configuredWeightKgPerCable: Float,
         isEchoMode: Boolean = false,
         warmupRepsCount: Int = 0,
-        workingRepsCount: Int = 0,
-        baselineLoadA: Float = 0f,
-        baselineLoadB: Float = 0f
+        workingRepsCount: Int = 0
     ): WorkoutState.SetSummary {
         if (metrics.isEmpty()) {
             return WorkoutState.SetSummary(
@@ -261,56 +260,53 @@ class ActiveSessionEngine(
                 peakPower = 0f,
                 averagePower = 0f,
                 repCount = repCount,
-                heaviestLiftKgPerCable = fallbackWeightKg
+                heaviestLiftKgPerCable = fallbackWeightKg,
+                configuredWeightKgPerCable = configuredWeightKgPerCable
             )
         }
 
         val durationMs = metrics.last().timestamp - metrics.first().timestamp
 
-        val blA = baselineLoadA.coerceAtLeast(0f)
-        val blB = baselineLoadB.coerceAtLeast(0f)
-        fun adjA(raw: Float) = (raw - blA).coerceAtLeast(0f)
-        fun adjB(raw: Float) = (raw - blB).coerceAtLeast(0f)
+        // Parent-aligned: raw totalLoad / 2, no baseline subtraction
+        val heaviestLiftKgPerCable = metrics.maxOf { it.totalLoad / 2f }
 
-        val heaviestLiftKgPerCable = metrics.maxOf { maxOf(adjA(it.loadA), adjB(it.loadB)) }
-
-        val peakCableA = metrics.maxOf { adjA(it.loadA) }
-        val peakCableB = metrics.maxOf { adjB(it.loadB) }
-        val totalVolumeKg = (peakCableA + peakCableB) * repCount
+        val peakCableA = metrics.maxOf { it.loadA }
+        val peakCableB = metrics.maxOf { it.loadB }
+        val totalVolumeKg = metrics.maxOf { it.totalLoad / 2f } * 2f * repCount
 
         val concentricMetrics = metrics.filter { it.velocityA > 10 || it.velocityB > 10 }
         val eccentricMetrics = metrics.filter { it.velocityA < -10 || it.velocityB < -10 }
 
-        val peakConcentricA = concentricMetrics.maxOfOrNull { adjA(it.loadA) } ?: 0f
-        val peakConcentricB = concentricMetrics.maxOfOrNull { adjB(it.loadB) } ?: 0f
-        val peakEccentricA = eccentricMetrics.maxOfOrNull { adjA(it.loadA) } ?: 0f
-        val peakEccentricB = eccentricMetrics.maxOfOrNull { adjB(it.loadB) } ?: 0f
+        val peakConcentricA = concentricMetrics.maxOfOrNull { it.loadA } ?: 0f
+        val peakConcentricB = concentricMetrics.maxOfOrNull { it.loadB } ?: 0f
+        val peakEccentricA = eccentricMetrics.maxOfOrNull { it.loadA } ?: 0f
+        val peakEccentricB = eccentricMetrics.maxOfOrNull { it.loadB } ?: 0f
 
-        val peakLoadA = metrics.maxOf { adjA(it.loadA) }
-        val peakLoadB = metrics.maxOf { adjB(it.loadB) }
+        val peakLoadA = metrics.maxOf { it.loadA }
+        val peakLoadB = metrics.maxOf { it.loadB }
         val thresholdA = (peakLoadA * 0.1f).coerceAtLeast(1f)
         val thresholdB = (peakLoadB * 0.1f).coerceAtLeast(1f)
 
         val activeConcentricMetrics = concentricMetrics.filter {
-            adjA(it.loadA) > thresholdA || adjB(it.loadB) > thresholdB
+            it.loadA > thresholdA || it.loadB > thresholdB
         }
         val activeEccentricMetrics = eccentricMetrics.filter {
-            adjA(it.loadA) > thresholdA || adjB(it.loadB) > thresholdB
+            it.loadA > thresholdA || it.loadB > thresholdB
         }
 
         val avgConcentricA = if (activeConcentricMetrics.isNotEmpty())
-            activeConcentricMetrics.map { adjA(it.loadA) }.average().toFloat() else 0f
+            activeConcentricMetrics.map { it.loadA }.average().toFloat() else 0f
         val avgConcentricB = if (activeConcentricMetrics.isNotEmpty())
-            activeConcentricMetrics.map { adjB(it.loadB) }.average().toFloat() else 0f
+            activeConcentricMetrics.map { it.loadB }.average().toFloat() else 0f
         val avgEccentricA = if (activeEccentricMetrics.isNotEmpty())
-            activeEccentricMetrics.map { adjA(it.loadA) }.average().toFloat() else 0f
+            activeEccentricMetrics.map { it.loadA }.average().toFloat() else 0f
         val avgEccentricB = if (activeEccentricMetrics.isNotEmpty())
-            activeEccentricMetrics.map { adjB(it.loadB) }.average().toFloat() else 0f
+            activeEccentricMetrics.map { it.loadB }.average().toFloat() else 0f
 
         val estimatedCalories = (totalVolumeKg * 0.5f * 9.81f / 4184f).coerceAtLeast(1f)
 
         val peakPower = heaviestLiftKgPerCable
-        val averagePower = metrics.map { (adjA(it.loadA) + adjB(it.loadB)) / 2f }.average().toFloat()
+        val averagePower = metrics.map { it.totalLoad / 2f }.average().toFloat()
 
         // Echo Mode Phase-Aware Metrics
         var warmupAvgWeightKg = 0f
@@ -320,7 +316,7 @@ class ActiveSessionEngine(
         var burnoutReps = 0
 
         if (isEchoMode && metrics.size > 10) {
-            val weightSamples = metrics.map { maxOf(adjA(it.loadA), adjB(it.loadB)) }
+            val weightSamples = metrics.map { maxOf(it.loadA, it.loadB) }
             peakWeightKg = weightSamples.maxOrNull() ?: 0f
             val peakThreshold = peakWeightKg * 0.9f
 
@@ -362,6 +358,7 @@ class ActiveSessionEngine(
             durationMs = durationMs,
             totalVolumeKg = totalVolumeKg,
             heaviestLiftKgPerCable = heaviestLiftKgPerCable,
+            configuredWeightKgPerCable = configuredWeightKgPerCable,
             peakForceConcentricA = peakConcentricA,
             peakForceConcentricB = peakConcentricB,
             peakForceEccentricA = peakEccentricA,
@@ -1317,11 +1314,10 @@ class ActiveSessionEngine(
                  metrics = metrics,
                  repCount = repCount.totalReps,
                  fallbackWeightKg = params.weightPerCableKg,
+                 configuredWeightKgPerCable = params.weightPerCableKg,
                  isEchoMode = params.isEchoMode,
                  warmupRepsCount = repCount.warmupReps,
-                 workingRepsCount = repCount.workingReps,
-                 baselineLoadA = coordinator._loadBaselineA.value,
-                 baselineLoadB = coordinator._loadBaselineB.value
+                 workingRepsCount = repCount.workingReps
              )
 
              val session = WorkoutSession(
@@ -1502,10 +1498,8 @@ class ActiveSessionEngine(
 
         val metricsSnapshot = coordinator.collectedMetrics.toList()
 
-        val blA = coordinator._loadBaselineA.value.coerceAtLeast(0f)
-        val blB = coordinator._loadBaselineB.value.coerceAtLeast(0f)
         val measuredPerCableKg = if (metricsSnapshot.isNotEmpty()) {
-            metricsSnapshot.maxOf { maxOf(it.loadA - blA, it.loadB - blB).coerceAtLeast(0f) }
+            metricsSnapshot.maxOf { it.totalLoad / 2f }
         } else {
             params.weightPerCableKg
         }
@@ -1518,11 +1512,10 @@ class ActiveSessionEngine(
             metrics = metricsSnapshot,
             repCount = working,
             fallbackWeightKg = params.weightPerCableKg,
+            configuredWeightKgPerCable = params.weightPerCableKg,
             isEchoMode = params.isEchoMode,
             warmupRepsCount = warmup,
-            workingRepsCount = working,
-            baselineLoadA = coordinator._loadBaselineA.value,
-            baselineLoadB = coordinator._loadBaselineB.value
+            workingRepsCount = working
         )
 
         val session = WorkoutSession(
@@ -1530,7 +1523,7 @@ class ActiveSessionEngine(
             timestamp = coordinator.workoutStartTime,
             mode = params.programMode.displayName,
             reps = params.reps,
-            weightPerCableKg = measuredPerCableKg,
+            weightPerCableKg = params.weightPerCableKg,
             progressionKg = params.progressionRegressionKg,
             duration = duration,
             totalReps = working,
@@ -1585,13 +1578,13 @@ class ActiveSessionEngine(
                 setNumber = setIndex,
                 setType = if (params.isAMRAP) SetType.AMRAP else SetType.STANDARD,
                 actualReps = working,
-                actualWeightKg = measuredPerCableKg,
+                actualWeightKg = params.weightPerCableKg,
                 loggedRpe = coordinator._currentSetRpe.value,
                 isPr = false,
                 completedAt = currentTimeMillis()
             )
             completedSetRepository.saveCompletedSet(completedSet)
-            Logger.d("Saved CompletedSet: set #$setIndex, ${working} reps @ ${measuredPerCableKg}kg${if (matchedPlannedSetId != null) " (linked to PlannedSet)" else ""}")
+            Logger.d("Saved CompletedSet: set #$setIndex, ${working} reps @ ${params.weightPerCableKg}kg${if (matchedPlannedSetId != null) " (linked to PlannedSet)" else ""}")
         }
 
         val hasPR = gamificationManager.processPostSaveEvents(
@@ -1673,11 +1666,10 @@ class ActiveSessionEngine(
                 metrics = metricsList,
                 repCount = completedReps,
                 fallbackWeightKg = params.weightPerCableKg,
+                configuredWeightKgPerCable = params.weightPerCableKg,
                 isEchoMode = params.isEchoMode,
                 warmupRepsCount = warmupReps,
-                workingRepsCount = completedReps,
-                baselineLoadA = coordinator._loadBaselineA.value,
-                baselineLoadB = coordinator._loadBaselineB.value
+                workingRepsCount = completedReps
             )
 
             Logger.d("Set summary: heaviest=${summary.heaviestLiftKgPerCable}kg, reps=$completedReps, duration=${summary.durationMs}ms")

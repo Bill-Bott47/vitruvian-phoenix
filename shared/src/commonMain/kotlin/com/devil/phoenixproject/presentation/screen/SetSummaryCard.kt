@@ -71,6 +71,7 @@ fun SetSummaryCard(
     val displayReps = summary.repCount
     val totalVolumeDisplay = kgToDisplay(summary.totalVolumeKg, weightUnit)
     val heaviestLiftDisplay = kgToDisplay(summary.heaviestLiftKgPerCable, weightUnit)
+    val setWeightDisplay = kgToDisplay(summary.configuredWeightKgPerCable, weightUnit)
     val durationSeconds = (summary.durationMs / 1000).toInt()
     val durationFormatted = "${durationSeconds / 60}:${(durationSeconds % 60).toString().padStart(2, '0')}"
 
@@ -157,7 +158,7 @@ fun SetSummaryCard(
                 )
                 SummaryStatCard(
                     label = "Set Weight",
-                    value = "${heaviestLiftDisplay.roundToInt()}",
+                    value = "${setWeightDisplay.roundToInt()}",
                     unit = "($unitLabel/cable)",
                     icon = Icons.Default.FitnessCenter,
                     modifier = Modifier.weight(1f)

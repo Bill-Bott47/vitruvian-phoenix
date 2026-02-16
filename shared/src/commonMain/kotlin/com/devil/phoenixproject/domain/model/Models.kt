@@ -64,6 +64,7 @@ sealed class WorkoutState {
         val durationMs: Long = 0L,
         val totalVolumeKg: Float = 0f,
         val heaviestLiftKgPerCable: Float = 0f,
+        val configuredWeightKgPerCable: Float = 0f,
         val peakForceConcentricA: Float = 0f,  // Peak during lifting (velocity > 0)
         val peakForceConcentricB: Float = 0f,
         val peakForceEccentricA: Float = 0f,   // Peak during lowering (velocity < 0)
@@ -433,6 +434,7 @@ fun WorkoutSession.toSetSummary(): WorkoutState.SetSummary? {
         durationMs = duration,
         totalVolumeKg = totalVolumeKg ?: 0f,
         heaviestLiftKgPerCable = heaviestLiftKg ?: 0f,
+        configuredWeightKgPerCable = weightPerCableKg,
         peakForceConcentricA = peakForceConcentricA ?: 0f,
         peakForceConcentricB = peakForceConcentricB ?: 0f,
         peakForceEccentricA = peakForceEccentricA ?: 0f,
