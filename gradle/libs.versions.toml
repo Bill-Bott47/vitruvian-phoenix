@@ -2,7 +2,7 @@
 # Kotlin and KMP
 kotlin = "2.3.0"
 agp = "9.0.1"
-compose-multiplatform = "1.10.0"
+compose-multiplatform = "1.10.1"
 
 # Premium Features
 revenuecat = "2.2.15+17.25.0"
@@ -24,7 +24,7 @@ androidx-core = "1.17.0"
 androidx-lifecycle = "2.10.0"
 androidx-splashscreen = "1.2.0"
 androidx-lifecycle-viewmodel-compose = "2.10.0-alpha07"
-androidx-navigation-compose = "2.9.1"
+androidx-navigation-compose = "2.9.2"
 androidx-savedstate = "1.4.0"
 
 # Dependency Injection - Koin (Multiplatform alternative to Hilt)
