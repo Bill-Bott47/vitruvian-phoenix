@@ -462,11 +462,12 @@ class RoutineFlowManager(
             progressionRegressionKg = firstExercise.progressionKg,
             isJustLift = false,  // CRITICAL: Routines are NOT just lift mode
             useAutoStart = false,
-            stopAtTop = settingsManager.stopAtTop.value,
+            stopAtTop = firstExercise.stopAtTop,
             warmupReps = if (isFirstBodyweight) 0 else Constants.DEFAULT_WARMUP_REPS,
             isAMRAP = firstIsAMRAP, // Issue #203: Check both per-set (null reps) and exercise-level flag
             selectedExerciseId = firstExercise.exercise.id,
-            stallDetectionEnabled = firstExercise.stallDetectionEnabled
+            stallDetectionEnabled = firstExercise.stallDetectionEnabled,
+            repCountTiming = firstExercise.repCountTiming
         )
 
         // Issue #188: Log computed params
@@ -576,6 +577,8 @@ class RoutineFlowManager(
             eccentricLoad = exercise.eccentricLoad,
             selectedExerciseId = exercise.exercise.id,
             stallDetectionEnabled = exercise.stallDetectionEnabled,
+            repCountTiming = exercise.repCountTiming,
+            stopAtTop = exercise.stopAtTop,
             isAMRAP = isSetAmrap,
             progressionRegressionKg = exercise.progressionKg,
             isJustLift = false,
@@ -617,6 +620,8 @@ class RoutineFlowManager(
             eccentricLoad = exercise.eccentricLoad,
             selectedExerciseId = exercise.exercise.id,
             stallDetectionEnabled = exercise.stallDetectionEnabled,
+            repCountTiming = exercise.repCountTiming,
+            stopAtTop = exercise.stopAtTop,
             isAMRAP = isSetAmrap,
             progressionRegressionKg = exercise.progressionKg,
             isJustLift = false,
@@ -776,7 +781,10 @@ class RoutineFlowManager(
                 weightPerCableKg = setWeight,
                 progressionRegressionKg = exercise.progressionKg,
                 warmupReps = 3,
-                selectedExerciseId = exercise.exercise.id
+                selectedExerciseId = exercise.exercise.id,
+                stallDetectionEnabled = exercise.stallDetectionEnabled,
+                repCountTiming = exercise.repCountTiming,
+                stopAtTop = exercise.stopAtTop
             )
         }
 

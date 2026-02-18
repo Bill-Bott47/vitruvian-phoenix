@@ -3,6 +3,7 @@ package com.devil.phoenixproject.presentation.manager
 import co.touchlab.kermit.Logger
 import com.devil.phoenixproject.data.preferences.PreferencesManager
 import com.devil.phoenixproject.data.repository.BleRepository
+import com.devil.phoenixproject.domain.model.RepCountTiming
 import com.devil.phoenixproject.domain.model.UserPreferences
 import com.devil.phoenixproject.domain.model.WeightUnit
 import com.devil.phoenixproject.util.format
@@ -29,12 +30,12 @@ class SettingsManager(
         .map { it.weightUnit }
         .stateIn(scope, SharingStarted.Eagerly, WeightUnit.KG)
 
-    val stopAtTop: StateFlow<Boolean> = userPreferences
-        .map { it.stopAtTop }
-        .stateIn(scope, SharingStarted.Eagerly, false)
-
     val enableVideoPlayback: StateFlow<Boolean> = userPreferences
         .map { it.enableVideoPlayback }
+        .stateIn(scope, SharingStarted.Eagerly, true)
+
+    val gamificationEnabled: StateFlow<Boolean> = userPreferences
+        .map { it.gamificationEnabled }
         .stateIn(scope, SharingStarted.Eagerly, true)
 
     // Issue #167: Autoplay is now derived from summaryCountdownSeconds
@@ -64,6 +65,10 @@ class SettingsManager(
         scope.launch { preferencesManager.setAudioRepCountEnabled(enabled) }
     }
 
+    fun setRepCountTiming(timing: RepCountTiming) {
+        scope.launch { preferencesManager.setRepCountTiming(timing) }
+    }
+
     fun setSummaryCountdownSeconds(seconds: Int) {
         Logger.d("setSummaryCountdownSeconds: Setting value to $seconds")
         scope.launch { preferencesManager.setSummaryCountdownSeconds(seconds) }
@@ -71,6 +76,10 @@ class SettingsManager(
 
     fun setAutoStartCountdownSeconds(seconds: Int) {
         scope.launch { preferencesManager.setAutoStartCountdownSeconds(seconds) }
+    }
+
+    fun setGamificationEnabled(enabled: Boolean) {
+        scope.launch { preferencesManager.setGamificationEnabled(enabled) }
     }
 
     fun setColorScheme(schemeIndex: Int) {

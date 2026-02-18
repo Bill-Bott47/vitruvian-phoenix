@@ -101,16 +101,32 @@ class ActiveSessionEngine(
         // #3: Hook up RepCounter
         repCounter.onRepEvent = { event ->
              scope.launch {
+                 val timing = coordinator._workoutParameters.value.repCountTiming
                  when (event.type) {
-                     RepType.WORKING_COMPLETED -> {
-                         // Check if audio rep count is enabled and rep is within announcement range (1-25)
-                         // Use event.workingCount (not coordinator._repCount.value) - the state hasn't been updated yet
-                         val prefs = settingsManager.userPreferences.value
-                         if (prefs.audioRepCountEnabled && event.workingCount in 1..25) {
-                             coordinator._hapticEvents.emit(HapticEvent.REP_COUNT_ANNOUNCED(event.workingCount))
-                         } else {
-                             coordinator._hapticEvents.emit(HapticEvent.REP_COMPLETED)
+                     RepType.WORKING_PENDING -> {
+                         // TOP timing: announce rep number at concentric peak
+                         if (timing == RepCountTiming.TOP) {
+                             val repNumber = event.workingCount + 1  // PENDING has pre-increment count
+                             val prefs = settingsManager.userPreferences.value
+                             if (prefs.audioRepCountEnabled && repNumber in 1..25) {
+                                 coordinator._hapticEvents.emit(HapticEvent.REP_COUNT_ANNOUNCED(repNumber))
+                             } else {
+                                 coordinator._hapticEvents.emit(HapticEvent.REP_COMPLETED)
+                             }
                          }
+                         // BOTTOM timing: silent grey preview only, no announcement
+                     }
+                     RepType.WORKING_COMPLETED -> {
+                         // BOTTOM timing: announce at eccentric valley (traditional)
+                         if (timing == RepCountTiming.BOTTOM) {
+                             val prefs = settingsManager.userPreferences.value
+                             if (prefs.audioRepCountEnabled && event.workingCount in 1..25) {
+                                 coordinator._hapticEvents.emit(HapticEvent.REP_COUNT_ANNOUNCED(event.workingCount))
+                             } else {
+                                 coordinator._hapticEvents.emit(HapticEvent.REP_COMPLETED)
+                             }
+                         }
+                         // TOP timing: already announced on PENDING, no double-announce
                      }
                      RepType.WARMUP_COMPLETED -> coordinator._hapticEvents.emit(HapticEvent.REP_COMPLETED)
                      RepType.WARMUP_COMPLETE -> coordinator._hapticEvents.emit(HapticEvent.WARMUP_COMPLETE)
@@ -318,7 +334,29 @@ class ActiveSessionEngine(
         val avgEccentricB = if (activeEccentricMetrics.isNotEmpty())
             activeEccentricMetrics.map { it.loadB }.average().toFloat() else 0f
 
-        val estimatedCalories = (totalVolumeKg * 0.5f * 9.81f / 4184f).coerceAtLeast(1f)
+        // Physics-based calorie estimation using work-energy theorem:
+        // W = sum(force_i * delta_distance_i) for each consecutive sample pair
+        // kcal = (W_joules / 4184) * 5 (metabolic efficiency multiplier ~20%)
+        val estimatedCalories = run {
+            if (metrics.size < 2) {
+                // Fallback for insufficient samples
+                (totalVolumeKg * 0.5f * 9.81f / 4184f).coerceAtLeast(1f)
+            } else {
+                var totalWorkJoules = 0.0
+                for (i in 1 until metrics.size) {
+                    val prev = metrics[i - 1]
+                    val curr = metrics[i]
+                    // Average force in N across both cables
+                    val avgForceN = ((prev.totalLoad + curr.totalLoad) / 2f) * 9.81f
+                    // Distance in meters (position is in mm)
+                    val deltaA = kotlin.math.abs(curr.positionA - prev.positionA) / 1000f
+                    val deltaB = kotlin.math.abs(curr.positionB - prev.positionB) / 1000f
+                    val avgDelta = if (isSingleCable) maxOf(deltaA, deltaB) else (deltaA + deltaB) / 2f
+                    totalWorkJoules += avgForceN * avgDelta
+                }
+                ((totalWorkJoules / 4184.0) * 5.0).toFloat().coerceAtLeast(1f)
+            }
+        }
 
         val peakPower = heaviestLiftKgPerCable
         val averagePower = if (isSingleCable) {
@@ -502,6 +540,11 @@ class ActiveSessionEngine(
         val currentPositions = coordinator._currentMetric.value
         val rawPosA = currentPositions?.positionA ?: 0f
         val rawPosB = currentPositions?.positionB ?: 0f
+
+        // Seed ROM from machine (only has effect on first notification with valid data)
+        if (!notification.isLegacyFormat) {
+            repCounter.seedRomBoundaries(notification.rangeTop, notification.rangeBottom)
+        }
 
         repCounter.process(
             repsRomCount = notification.repsRomCount,
@@ -860,7 +903,8 @@ class ActiveSessionEngine(
             workoutModeId = prefsDefaults.workoutModeId,
             eccentricLoadPercentage = prefsDefaults.eccentricLoadPercentage,
             echoLevelValue = prefsDefaults.echoLevelValue,
-            stallDetectionEnabled = prefsDefaults.stallDetectionEnabled
+            stallDetectionEnabled = prefsDefaults.stallDetectionEnabled,
+            repCountTimingName = prefsDefaults.repCountTimingName
         )
     }
 
@@ -872,7 +916,8 @@ class ActiveSessionEngine(
                 workoutModeId = defaults.workoutModeId,
                 eccentricLoadPercentage = defaults.eccentricLoadPercentage,
                 echoLevelValue = defaults.echoLevelValue,
-                stallDetectionEnabled = defaults.stallDetectionEnabled
+                stallDetectionEnabled = defaults.stallDetectionEnabled,
+                repCountTimingName = defaults.repCountTimingName
             )
             preferencesManager.saveJustLiftDefaults(prefsDefaults)
             Logger.d("saveJustLiftDefaults: weight=${defaults.weightPerCableKg}kg, mode=${defaults.workoutModeId}")
@@ -893,7 +938,8 @@ class ActiveSessionEngine(
                 weightChangePerRep = params.progressionRegressionKg,
                 eccentricLoadPercentage = eccentricLoadPct,
                 echoLevelValue = echoLevelVal,
-                stallDetectionEnabled = params.stallDetectionEnabled
+                stallDetectionEnabled = params.stallDetectionEnabled,
+                repCountTimingName = params.repCountTiming.name
             )
             preferencesManager.saveJustLiftDefaults(defaults)
             Logger.d { "Saved Just Lift defaults: mode=${params.programMode.modeValue}, weight=${params.weightPerCableKg}kg" }

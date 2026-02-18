@@ -233,6 +233,14 @@ enum class WeightUnit {
 }
 
 /**
+ * Rep count timing mode - controls when the working rep number increments
+ */
+enum class RepCountTiming {
+    TOP,    // Count rep at concentric peak (top of lift) - what users expect
+    BOTTOM  // Count rep at eccentric valley (bottom) - legacy machine behavior
+}
+
+/**
  * Workout parameters
  */
 data class WorkoutParameters(
@@ -249,6 +257,7 @@ data class WorkoutParameters(
     val lastUsedWeightKg: Float? = null,  // Last used weight for this exercise (for quick preset)
     val prWeightKg: Float? = null,  // Personal record weight for this exercise (for quick preset)
     val stallDetectionEnabled: Boolean = true,  // Enable stall detection auto-stop for Just Lift/AMRAP modes
+    val repCountTiming: RepCountTiming = RepCountTiming.TOP,  // When to count working reps (TOP=concentric peak, BOTTOM=eccentric valley)
     // Echo-specific settings (only used when programMode == ProgramMode.Echo)
     val echoLevel: EchoLevel = EchoLevel.HARD,
     val eccentricLoad: EccentricLoad = EccentricLoad.LOAD_100

@@ -5,6 +5,7 @@ import com.devil.phoenixproject.domain.model.HeuristicStatistics
 import com.devil.phoenixproject.domain.model.WorkoutMetric
 import com.devil.phoenixproject.domain.model.currentTimeMillis
 import com.devil.phoenixproject.util.BleConstants
+import com.devil.phoenixproject.util.DeviceInfo
 import com.juul.kable.Peripheral
 import com.juul.kable.WriteType
 import kotlinx.coroutines.CoroutineScope
@@ -175,6 +176,12 @@ class MetricPollingEngine(
                 var successCount = 0L
                 consecutiveTimeouts = 0
                 log.i { "Starting SEQUENTIAL monitor polling (timeout=${BleConstants.Timing.HEARTBEAT_READ_TIMEOUT_MS}ms, forAutoStart=$forAutoStart)" }
+
+                // Auto-start packet capture in debug builds for hardware validation
+                if (DeviceInfo.isDebugBuild && !BlePacketCapture.isCapturing) {
+                    BlePacketCapture.startCapture(desc = "auto-capture on monitor poll start")
+                    log.i { "BlePacketCapture auto-started (debug build). Use adb logcat | grep CAPTURE_HEX to view." }
+                }
 
                 try {
                     while (isActive) {
@@ -362,6 +369,11 @@ class MetricPollingEngine(
             log.i { "======================================" }
         }
 
+        // Auto-stop packet capture when polling ends
+        if (BlePacketCapture.isCapturing) {
+            BlePacketCapture.stopCapture()
+        }
+
         monitorPollingJob?.cancel()
         diagnosticPollingJob?.cancel()
         heuristicPollingJob?.cancel()
@@ -453,6 +465,9 @@ class MetricPollingEngine(
      * Processing pipeline: read -> parse -> process -> detect -> emit.
      */
     private fun parseMonitorData(data: ByteArray) {
+        // Hardware validation: capture raw bytes for protocol analysis (debug builds only)
+        BlePacketCapture.onPacket(data)
+
         val packet = parseMonitorPacket(data)
         if (packet == null) {
             log.w { "Monitor data too short: ${data.size} bytes" }

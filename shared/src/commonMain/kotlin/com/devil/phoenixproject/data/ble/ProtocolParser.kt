@@ -165,14 +165,17 @@ fun parseRepPacket(data: ByteArray, hasOpcodePrefix: Boolean, timestamp: Long): 
 /**
  * Parse monitor characteristic data into MonitorPacket.
  *
- * Format (16+ bytes, Little Endian):
- * - f0 (0-1): ticks low
- * - f1 (2-3): ticks high
- * - f2 (4-5): posA (signed, /10.0f for mm)
- * - f4 (8-9): loadA * 100
- * - f5 (10-11): posB (signed, /10.0f for mm)
- * - f7 (14-15): loadB * 100
- * - (16-17): status flags (optional)
+ * Hardware-validated format (26 bytes, Little Endian) — confirmed 2026-02-17:
+ * - (0-1):   ticks low (uint16)
+ * - (2-3):   ticks high (uint16)
+ * - (4-5):   posA (signed int16, /10.0f for mm)
+ * - (6-7):   velA (signed int16, firmware velocity for cable A)
+ * - (8-9):   loadA (uint16, /100.0f for kg)
+ * - (10-11): posB (signed int16, /10.0f for mm)
+ * - (12-13): velB (signed int16, firmware velocity for cable B)
+ * - (14-15): loadB (uint16, /100.0f for kg)
+ * - (16-17): status flags (uint16, optional)
+ * - (18-25): unknown (8 bytes, captured for investigation)
  *
  * @param data The raw byte array
  * @return MonitorPacket or null if data too short
@@ -183,8 +186,10 @@ fun parseMonitorPacket(data: ByteArray): MonitorPacket? {
     val f0 = getUInt16LE(data, 0)  // ticks low
     val f1 = getUInt16LE(data, 2)  // ticks high
     val posARaw = getInt16LE(data, 4)  // Signed 16-bit for position
+    val velARaw = if (data.size >= 8) getInt16LE(data, 6) else 0  // Firmware velocity A
     val loadARaw = getUInt16LE(data, 8)
     val posBRaw = getInt16LE(data, 10)  // Signed 16-bit for position
+    val velBRaw = if (data.size >= 14) getInt16LE(data, 12) else 0  // Firmware velocity B
     val loadBRaw = getUInt16LE(data, 14)
 
     // Reconstruct 32-bit tick counter
@@ -201,13 +206,19 @@ fun parseMonitorPacket(data: ByteArray): MonitorPacket? {
     // Status flags (optional)
     val status = if (data.size >= 18) getUInt16LE(data, 16) else 0
 
+    // Capture extra bytes beyond 18 for investigation
+    val extra = if (data.size > 18) data.copyOfRange(18, data.size) else null
+
     return MonitorPacket(
         ticks = ticks,
         posA = posA,
         posB = posB,
         loadA = loadA,
         loadB = loadB,
-        status = status
+        status = status,
+        firmwareVelA = velARaw,
+        firmwareVelB = velBRaw,
+        extraBytes = extra
     )
 }
 

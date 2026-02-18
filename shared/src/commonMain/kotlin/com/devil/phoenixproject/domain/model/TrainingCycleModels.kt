@@ -1,5 +1,6 @@
 package com.devil.phoenixproject.domain.model
 
+import com.devil.phoenixproject.util.OneRepMaxCalculator
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
@@ -414,11 +415,7 @@ data class CompletedSet(
     /**
      * Calculate estimated 1RM using Epley formula.
      */
-    fun estimatedOneRepMax(): Float {
-        if (actualReps <= 0) return actualWeightKg
-        if (actualReps == 1) return actualWeightKg
-        return actualWeightKg * (1 + 0.0333f * actualReps)
-    }
+    fun estimatedOneRepMax(): Float = OneRepMaxCalculator.epley(actualWeightKg, actualReps)
 
     /**
      * Calculate volume (weight × reps).
@@ -458,7 +455,17 @@ enum class ProgressionReason {
     /** User hit target reps for consecutive sessions */
     REPS_ACHIEVED,
     /** User logged RPE below target */
-    LOW_RPE
+    LOW_RPE,
+    /** User missed target reps for 2+ consecutive sessions (deload) */
+    MISSED_REPS,
+    /** User logged RPE >= 9 consistently (deload) */
+    HIGH_RPE,
+    /** Plateau detected via trend analysis (deload) */
+    PLATEAU_DETECTED;
+
+    /** True if this reason suggests a weight decrease rather than increase */
+    val isDeload: Boolean
+        get() = this in setOf(MISSED_REPS, HIGH_RPE, PLATEAU_DETECTED)
 }
 
 /**
@@ -517,12 +524,43 @@ data class ProgressionEvent(
         }
 
         /**
+         * Create a deload suggestion (weight decrease).
+         */
+        fun createDeload(
+            id: String = generateUUID(),
+            exerciseId: String,
+            previousWeightKg: Float,
+            reason: ProgressionReason
+        ): ProgressionEvent {
+            val suggestedWeight = calculateDeloadWeight(previousWeightKg)
+            return ProgressionEvent(
+                id = id,
+                exerciseId = exerciseId,
+                suggestedWeightKg = suggestedWeight,
+                previousWeightKg = previousWeightKg,
+                reason = reason,
+                userResponse = null,
+                actualWeightKg = null,
+                timestamp = currentTimeMillis()
+            )
+        }
+
+        /**
          * Calculate progression weight: 2.5% increase, rounded to 0.5kg, minimum 0.5kg increment.
          */
         fun calculateProgressionWeight(currentWeight: Float): Float {
             val rawIncrease = currentWeight * 0.025f
             val increment = maxOf(0.5f, (rawIncrease * 2).toInt() / 2f)
             return currentWeight + increment
+        }
+
+        /**
+         * Calculate deload weight: 10% decrease, rounded to 0.5kg, minimum 0.5kg decrement.
+         */
+        fun calculateDeloadWeight(currentWeight: Float): Float {
+            val rawDecrease = currentWeight * 0.10f
+            val decrement = maxOf(0.5f, (rawDecrease * 2).toInt() / 2f)
+            return maxOf(0f, currentWeight - decrement)
         }
     }
 }

@@ -287,19 +287,15 @@ fun NavGraph(
             val discoModeActive by viewModel.discoModeActive.collectAsState()
             SettingsTab(
                 weightUnit = weightUnit,
-                stopAtTop = userPreferences.stopAtTop,
                 enableVideoPlayback = userPreferences.enableVideoPlayback,
                 darkModeEnabled = themeMode == ThemeMode.DARK,
-                stallDetectionEnabled = userPreferences.stallDetectionEnabled,
                 audioRepCountEnabled = userPreferences.audioRepCountEnabled,
                 summaryCountdownSeconds = userPreferences.summaryCountdownSeconds,
                 autoStartCountdownSeconds = userPreferences.autoStartCountdownSeconds,
                 selectedColorSchemeIndex = userPreferences.colorScheme,
                 onWeightUnitChange = { viewModel.setWeightUnit(it) },
-                onStopAtTopChange = { viewModel.setStopAtTop(it) },
                 onEnableVideoPlaybackChange = { viewModel.setEnableVideoPlayback(it) },
                 onDarkModeChange = { enabled -> onThemeModeChange(if (enabled) ThemeMode.DARK else ThemeMode.LIGHT) },
-                onStallDetectionChange = { viewModel.setStallDetectionEnabled(it) },
                 onAudioRepCountChange = { viewModel.setAudioRepCountEnabled(it) },
                 onSummaryCountdownChange = { viewModel.setSummaryCountdownSeconds(it) },
                 onAutoStartCountdownChange = { viewModel.setAutoStartCountdownSeconds(it) },
@@ -321,9 +317,12 @@ fun NavGraph(
                 onDiscoModeToggle = { viewModel.toggleDiscoMode(it) },
                 onPlayDiscoSound = { viewModel.emitDiscoSound() },
                 onTestSounds = { viewModel.testSounds() },
+                // Gamification toggle
+                gamificationEnabled = userPreferences.gamificationEnabled,
+                onGamificationEnabledChange = { viewModel.setGamificationEnabled(it) },
                 // Simulator mode Easter egg
                 simulatorModeUnlocked = viewModel.isSimulatorModeUnlocked(),
-                simulatorModeEnabled = viewModel.isSimulatorModeUnlocked(),
+                simulatorModeEnabled = viewModel.isSimulatorModeEnabled(),
                 onSimulatorModeUnlocked = { viewModel.unlockSimulatorMode() },
                 onSimulatorModeToggle = { viewModel.toggleSimulatorMode(it) }
             )

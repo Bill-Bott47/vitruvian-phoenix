@@ -95,7 +95,16 @@ class FakePreferencesManager : PreferencesManager {
         _preferencesFlow.value = _preferencesFlow.value.copy(autoStartCountdownSeconds = seconds)
     }
 
+    override suspend fun setRepCountTiming(timing: com.devil.phoenixproject.domain.model.RepCountTiming) {
+        _preferencesFlow.value = _preferencesFlow.value.copy(repCountTiming = timing)
+    }
+
+    override suspend fun setGamificationEnabled(enabled: Boolean) {
+        _preferencesFlow.value = _preferencesFlow.value.copy(gamificationEnabled = enabled)
+    }
+
     private var simulatorModeUnlocked = false
+    private var simulatorModeEnabled = false
 
     override suspend fun setSimulatorModeUnlocked(unlocked: Boolean) {
         simulatorModeUnlocked = unlocked
@@ -103,5 +112,13 @@ class FakePreferencesManager : PreferencesManager {
 
     override fun isSimulatorModeUnlocked(): Boolean {
         return simulatorModeUnlocked
+    }
+
+    override suspend fun setSimulatorModeEnabled(enabled: Boolean) {
+        simulatorModeEnabled = enabled
+    }
+
+    override fun isSimulatorModeEnabled(): Boolean {
+        return simulatorModeEnabled
     }
 }
