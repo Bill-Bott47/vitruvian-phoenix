@@ -39,19 +39,15 @@ import com.devil.phoenixproject.util.KmpUtils
 @Composable
 fun SettingsTab(
     weightUnit: WeightUnit,
-    stopAtTop: Boolean,
     enableVideoPlayback: Boolean,
     darkModeEnabled: Boolean,
-    stallDetectionEnabled: Boolean = true,
     audioRepCountEnabled: Boolean = false,
     summaryCountdownSeconds: Int = 10,
     autoStartCountdownSeconds: Int = 5,
     selectedColorSchemeIndex: Int = 0,
     onWeightUnitChange: (WeightUnit) -> Unit,
-    onStopAtTopChange: (Boolean) -> Unit,
     onEnableVideoPlaybackChange: (Boolean) -> Unit,
     onDarkModeChange: (Boolean) -> Unit,
-    onStallDetectionChange: (Boolean) -> Unit,
     onAudioRepCountChange: (Boolean) -> Unit,
     onSummaryCountdownChange: (Int) -> Unit = {},
     onAutoStartCountdownChange: (Int) -> Unit = {},
@@ -74,6 +70,9 @@ fun SettingsTab(
     onDiscoModeToggle: (Boolean) -> Unit = {},
     onPlayDiscoSound: () -> Unit = {},
     onTestSounds: () -> Unit = {},
+    // Gamification toggle
+    gamificationEnabled: Boolean = true,
+    onGamificationEnabledChange: (Boolean) -> Unit = {},
     // Simulator mode Easter egg
     simulatorModeUnlocked: Boolean = false,
     simulatorModeEnabled: Boolean = false,
@@ -473,36 +472,6 @@ fun SettingsTab(
 
                 Spacer(modifier = Modifier.height(Spacing.medium))
 
-                // Stop At Top toggle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            "Stop At Top",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Release tension at contracted position instead of extended position",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = stopAtTop,
-                        onCheckedChange = onStopAtTopChange
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(Spacing.medium))
-
                 // Enable Video Playback toggle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -533,36 +502,6 @@ fun SettingsTab(
 
                 Spacer(modifier = Modifier.height(Spacing.medium))
 
-                // Stall Detection toggle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            "Stall Detection",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Auto-stop set when movement pauses for 5 seconds (Just Lift/AMRAP)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = stallDetectionEnabled,
-                        onCheckedChange = onStallDetectionChange
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(Spacing.medium))
-
                 // Audio Rep Counter toggle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -588,6 +527,36 @@ fun SettingsTab(
                     Switch(
                         checked = audioRepCountEnabled,
                         onCheckedChange = onAudioRepCountChange
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(Spacing.medium))
+
+                // Gamification toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            "Gamification",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Show PR celebrations and award badges after workouts",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = gamificationEnabled,
+                        onCheckedChange = onGamificationEnabledChange
                     )
                 }
             }
@@ -903,7 +872,8 @@ fun SettingsTab(
             }
         }
 
-    // Achievements Section - Material 3 Expressive
+    // Achievements Section - Material 3 Expressive (hidden when gamification is disabled)
+    if (gamificationEnabled) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -979,6 +949,7 @@ fun SettingsTab(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
     }
 
     // TODO: Uncomment when Cloud Sync / Portal features are ready for public release

@@ -77,7 +77,7 @@ class MainViewModel constructor(
     // === Phase 2b: GamificationManager (extracted from this class) ===
     val gamificationManager = GamificationManager(
         gamificationRepository, personalRecordRepository, exerciseRepository,
-        _hapticEvents, viewModelScope
+        _hapticEvents, viewModelScope, settingsManager.gamificationEnabled
     )
 
     // === Phase 3: WorkoutSessionManager (extracted from this class) ===
@@ -173,7 +173,6 @@ class MainViewModel constructor(
 
     val userPreferences: StateFlow<UserPreferences> get() = settingsManager.userPreferences
     val weightUnit: StateFlow<WeightUnit> get() = settingsManager.weightUnit
-    val stopAtTop: StateFlow<Boolean> get() = settingsManager.stopAtTop
     val enableVideoPlayback: StateFlow<Boolean> get() = settingsManager.enableVideoPlayback
     val autoplayEnabled: StateFlow<Boolean> get() = settingsManager.autoplayEnabled
 
@@ -182,9 +181,11 @@ class MainViewModel constructor(
     fun setEnableVideoPlayback(enabled: Boolean) = settingsManager.setEnableVideoPlayback(enabled)
     fun setStallDetectionEnabled(enabled: Boolean) = settingsManager.setStallDetectionEnabled(enabled)
     fun setAudioRepCountEnabled(enabled: Boolean) = settingsManager.setAudioRepCountEnabled(enabled)
+    fun setRepCountTiming(timing: RepCountTiming) = settingsManager.setRepCountTiming(timing)
     fun setSummaryCountdownSeconds(seconds: Int) = settingsManager.setSummaryCountdownSeconds(seconds)
     fun setAutoStartCountdownSeconds(seconds: Int) = settingsManager.setAutoStartCountdownSeconds(seconds)
     fun setColorScheme(schemeIndex: Int) = settingsManager.setColorScheme(schemeIndex)
+    fun setGamificationEnabled(enabled: Boolean) = settingsManager.setGamificationEnabled(enabled)
     fun kgToDisplay(kg: Float, unit: WeightUnit) = settingsManager.kgToDisplay(kg, unit)
     fun displayToKg(display: Float, unit: WeightUnit) = settingsManager.displayToKg(display, unit)
     fun formatWeight(kg: Float, unit: WeightUnit) = settingsManager.formatWeight(kg, unit)
@@ -380,21 +381,16 @@ class MainViewModel constructor(
 
     // ===== Simulator Mode (Easter Egg - stays here) =====
 
+    val simulatorModeUnlocked: StateFlow<Boolean> get() = settingsManager.simulatorModeUnlocked
+    val simulatorModeEnabled: StateFlow<Boolean> get() = settingsManager.simulatorModeEnabled
+
     fun unlockSimulatorMode() {
-        viewModelScope.launch {
-            preferencesManager.setSimulatorModeUnlocked(true)
-            Logger.i { "SIMULATOR MODE UNLOCKED!" }
-        }
+        settingsManager.setSimulatorModeUnlocked(true)
+        Logger.i { "SIMULATOR MODE UNLOCKED!" }
     }
 
     fun toggleSimulatorMode(enabled: Boolean) {
-        viewModelScope.launch {
-            preferencesManager.setSimulatorModeUnlocked(enabled)
-        }
-    }
-
-    fun isSimulatorModeUnlocked(): Boolean {
-        return preferencesManager.isSimulatorModeUnlocked()
+        settingsManager.setSimulatorModeEnabled(enabled)
     }
 
     // ===== Cleanup =====

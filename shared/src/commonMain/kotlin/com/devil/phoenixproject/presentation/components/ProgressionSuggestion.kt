@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -46,10 +47,15 @@ fun ProgressionSuggestionBanner(
         enter = fadeIn() + expandVertically(),
         exit = fadeOut() + shrinkVertically()
     ) {
+        val isDeload = event.reason.isDeload
+        val accentColor = if (isDeload) Color(0xFFF57C00) else Color(0xFF4CAF50)
+        val accentColorDark = if (isDeload) Color(0xFFE65100) else Color(0xFF2E7D32)
+        val accentColorMid = if (isDeload) Color(0xFFEF6C00) else Color(0xFF388E3C)
+
         Card(
             modifier = modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = Color(0xFF4CAF50).copy(alpha = 0.15f)
+                containerColor = accentColor.copy(alpha = 0.15f)
             ),
             shape = RoundedCornerShape(16.dp)
         ) {
@@ -63,26 +69,29 @@ fun ProgressionSuggestionBanner(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.AutoMirrored.Filled.TrendingUp,
+                        if (isDeload) Icons.AutoMirrored.Filled.TrendingDown else Icons.AutoMirrored.Filled.TrendingUp,
                         contentDescription = null,
-                        tint = Color(0xFF4CAF50),
+                        tint = accentColor,
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(Modifier.width(8.dp))
                     Column {
                         Text(
-                            "Weight Increase Suggested",
+                            if (isDeload) "Deload Suggested" else "Weight Increase Suggested",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2E7D32)
+                            color = accentColorDark
                         )
                         Text(
                             when (event.reason) {
                                 ProgressionReason.REPS_ACHIEVED -> "You've hit your target reps consistently"
                                 ProgressionReason.LOW_RPE -> "Your recent sets felt easier than target"
+                                ProgressionReason.MISSED_REPS -> "You've missed your target reps recently"
+                                ProgressionReason.HIGH_RPE -> "Your recent sets have been very difficult"
+                                ProgressionReason.PLATEAU_DETECTED -> "A plateau has been detected in your progress"
                             },
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF388E3C)
+                            color = accentColorMid
                         )
                     }
                 }
@@ -94,7 +103,7 @@ fun ProgressionSuggestionBanner(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
-                            Color(0xFF4CAF50).copy(alpha = 0.1f),
+                            accentColor.copy(alpha = 0.1f),
                             RoundedCornerShape(12.dp)
                         )
                         .padding(12.dp),
@@ -103,7 +112,7 @@ fun ProgressionSuggestionBanner(
                 ) {
                     Column {
                         Text(
-                            "Previous",
+                            "Current",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -117,7 +126,7 @@ fun ProgressionSuggestionBanner(
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = null,
-                        tint = Color(0xFF4CAF50),
+                        tint = accentColor,
                         modifier = Modifier.size(20.dp)
                     )
 
@@ -125,22 +134,27 @@ fun ProgressionSuggestionBanner(
                         Text(
                             "Suggested",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF4CAF50)
+                            color = accentColor
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 formatWeight(event.suggestedWeightKg, weightUnit),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2E7D32)
+                                color = accentColorDark
                             )
                             Spacer(Modifier.width(4.dp))
                             Surface(
-                                color = Color(0xFF4CAF50),
+                                color = accentColor,
                                 shape = RoundedCornerShape(4.dp)
                             ) {
+                                val incrementText = if (isDeload) {
+                                    formatWeight(-event.increment(), weightUnit).let { "-$it" }
+                                } else {
+                                    "+${formatWeight(event.increment(), weightUnit)}"
+                                }
                                 Text(
-                                    "+${formatWeight(event.increment(), weightUnit)}",
+                                    incrementText,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White
@@ -193,7 +207,7 @@ fun ProgressionSuggestionBanner(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF4CAF50)
+                            containerColor = accentColor
                         )
                     ) {
                         Icon(

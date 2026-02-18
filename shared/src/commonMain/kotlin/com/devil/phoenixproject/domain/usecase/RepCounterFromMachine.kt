@@ -94,7 +94,7 @@ class RepCounterFromMachine {
         this.isAMRAP = isAMRAP
 
         // Log RepCounter configuration
-        logDebug("🔧 RepCounter.configure() called:")
+        logDebug("RepCounter.configure() called:")
         logDebug("  warmupTarget: $warmupTarget")
         logDebug("  workingTarget: $workingTarget")
         logDebug("  isJustLift: $isJustLift")
@@ -175,6 +175,35 @@ class RepCounterFromMachine {
             minRepPosB = posB
             minRepPosBRange = Pair(posB, posB)
         }
+    }
+
+    /**
+     * Seed ROM boundaries from machine-provided range values.
+     * Only seeds if not already calibrated from actual reps.
+     * Called when the first rep notification arrives with valid range data.
+     */
+    fun seedRomBoundaries(rangeTop: Float, rangeBottom: Float) {
+        if (rangeTop <= 0f || rangeBottom < 0f) return
+        if (rangeTop == 300.0f && rangeBottom == 0.0f) return  // Default/unset values
+
+        // Only seed if not already calibrated from actual reps
+        if (maxRepPosA == null && topPositionsA.isEmpty()) {
+            maxRepPosA = rangeTop
+            maxRepPosARange = Pair(rangeTop, rangeTop)
+        }
+        if (maxRepPosB == null && topPositionsB.isEmpty()) {
+            maxRepPosB = rangeTop
+            maxRepPosBRange = Pair(rangeTop, rangeTop)
+        }
+        if (minRepPosA == null && bottomPositionsA.isEmpty()) {
+            minRepPosA = rangeBottom
+            minRepPosARange = Pair(rangeBottom, rangeBottom)
+        }
+        if (minRepPosB == null && bottomPositionsB.isEmpty()) {
+            minRepPosB = rangeBottom
+            minRepPosBRange = Pair(rangeBottom, rangeBottom)
+        }
+        logDebug("ROM seeded from machine: top=${rangeTop}mm, bottom=${rangeBottom}mm")
     }
 
     /**
@@ -446,10 +475,8 @@ class RepCounterFromMachine {
         }
 
         // WORKING REP TRACKING: Use repsSetCount directly from machine
-        // NOTE: The machine handles warmup/working distinction internally.
+        // The machine handles warmup/working distinction internally.
         // repsSetCount increments for WORKING reps only - trust the machine!
-        // We still track warmupReps for UI display, but don't gate on it.
-        // The machine won't increment repsSetCount until warmup is complete.
         if (repsSetCount > workingReps) {
             // If machine is reporting working reps but we haven't seen warmup complete,
             // force our warmup tracking to match (machine knows best)
@@ -471,7 +498,7 @@ class RepCounterFromMachine {
             activePhase = RepPhase.IDLE
             phaseProgress = 0f
 
-            logDebug("💪 WORKING_COMPLETED: rep $workingReps confirmed (colored)")
+            logDebug("WORKING_COMPLETED: rep $workingReps confirmed at eccentric valley")
 
             onRepEvent?.invoke(
                 RepEvent(
@@ -483,7 +510,7 @@ class RepCounterFromMachine {
 
             // Check if target reached (unless AMRAP or Just Lift)
             if (!isJustLift && !isAMRAP && workingTarget > 0 && workingReps >= workingTarget) {
-                logDebug("⚠️ shouldStop set to TRUE (target reached)")
+                logDebug("shouldStop set to TRUE (target reached)")
                 logDebug("  workingTarget=$workingTarget, workingReps=$workingReps")
                 shouldStop = true
                 onRepEvent?.invoke(

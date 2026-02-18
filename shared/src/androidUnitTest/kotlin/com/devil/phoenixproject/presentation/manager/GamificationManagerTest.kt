@@ -15,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -53,7 +54,8 @@ class GamificationManagerTest {
                 personalRecordRepository = fakePersonalRecordRepository,
                 exerciseRepository = fakeExerciseRepository,
                 hapticEvents = hapticEvents,
-                scope = managerScope
+                scope = managerScope,
+                gamificationEnabled = MutableStateFlow(true)
             )
             val badge = BadgeDefinitions.allBadges.first()
             fakeGamificationRepository.pendingBadges = mutableListOf(badge)
@@ -116,7 +118,8 @@ class GamificationManagerTest {
                 personalRecordRepository = fakePersonalRecordRepository,
                 exerciseRepository = fakeExerciseRepository,
                 hapticEvents = hapticEvents,
-                scope = managerScope
+                scope = managerScope,
+                gamificationEnabled = MutableStateFlow(true)
             )
             val badge = BadgeDefinitions.allBadges.first()
             fakeGamificationRepository.pendingBadges = mutableListOf(badge)

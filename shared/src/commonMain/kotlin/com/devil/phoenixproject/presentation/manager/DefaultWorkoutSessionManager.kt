@@ -27,7 +27,8 @@ data class JustLiftDefaults(
     val workoutModeId: Int, // 0=OldSchool, 1=Pump, 10=Echo
     val eccentricLoadPercentage: Int = 100,
     val echoLevelValue: Int = 1, // 0=Hard, 1=Harder, 2=Hardest, 3=Epic
-    val stallDetectionEnabled: Boolean = true // Stall detection auto-stop toggle
+    val stallDetectionEnabled: Boolean = true, // Stall detection auto-stop toggle
+    val repCountTimingName: String = "TOP"  // RepCountTiming enum name for persistence
 ) {
     /**
      * Convert stored mode ID to ProgramMode
@@ -62,6 +63,15 @@ data class JustLiftDefaults(
      * Get EchoLevel from stored value
      */
     fun getEchoLevel(): EchoLevel = EchoLevel.entries.getOrElse(echoLevelValue) { EchoLevel.HARDER }
+
+    /**
+     * Get RepCountTiming from stored name
+     */
+    fun getRepCountTiming(): RepCountTiming = try {
+        RepCountTiming.valueOf(repCountTimingName)
+    } catch (_: Exception) {
+        RepCountTiming.TOP
+    }
 }
 
 /**

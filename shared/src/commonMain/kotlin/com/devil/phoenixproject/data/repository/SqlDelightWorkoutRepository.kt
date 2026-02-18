@@ -16,6 +16,7 @@ import com.devil.phoenixproject.domain.model.Superset
 import com.devil.phoenixproject.domain.model.WorkoutSession
 import com.devil.phoenixproject.domain.model.currentTimeMillis
 import com.devil.phoenixproject.domain.model.generateUUID
+import com.devil.phoenixproject.util.OneRepMaxCalculator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
@@ -253,6 +254,10 @@ class SqlDelightWorkoutRepository(
                     duration = row.duration?.toInt(),
                     isAMRAP = row.isAMRAP == 1L,
                     perSetRestTime = row.perSetRestTime == 1L,
+                    // Per-exercise behavior overrides
+                    stallDetectionEnabled = row.stallDetectionEnabled == 1L,
+                    repCountTiming = try { com.devil.phoenixproject.domain.model.RepCountTiming.valueOf(row.repCountTiming) } catch (_: Exception) { com.devil.phoenixproject.domain.model.RepCountTiming.TOP },
+                    stopAtTop = row.stopAtTop == 1L,
                     supersetId = row.supersetId,
                     orderInSuperset = row.orderInSuperset.toInt(),
                     // PR percentage scaling fields
@@ -497,7 +502,11 @@ class SqlDelightWorkoutRepository(
             usePercentOfPR = if (exercise.usePercentOfPR) 1L else 0L,
             weightPercentOfPR = exercise.weightPercentOfPR.toLong(),
             prTypeForScaling = exercise.prTypeForScaling.name,
-            setWeightsPercentOfPR = if (exercise.setWeightsPercentOfPR.isEmpty()) null else json.encodeToString(exercise.setWeightsPercentOfPR)
+            setWeightsPercentOfPR = if (exercise.setWeightsPercentOfPR.isEmpty()) null else json.encodeToString(exercise.setWeightsPercentOfPR),
+            // Per-exercise behavior overrides
+            stallDetectionEnabled = if (exercise.stallDetectionEnabled) 1L else 0L,
+            stopAtTop = if (exercise.stopAtTop) 1L else 0L,
+            repCountTiming = exercise.repCountTiming.name
         )
     }
 
@@ -613,11 +622,7 @@ class SqlDelightWorkoutRepository(
 
             if (!isNewWeightPR && !isNewVolumePR) return@withContext
 
-            val oneRepMax = if (reps == 1) {
-                weightKg
-            } else {
-                weightKg * (1 + reps / 30f)
-            }
+            val oneRepMax = OneRepMaxCalculator.epley(weightKg, reps)
 
             if (isNewWeightPR) {
                 queries.upsertPR(
@@ -630,11 +635,6 @@ class SqlDelightWorkoutRepository(
                     workoutMode = mode,
                     prType = PRType.MAX_WEIGHT.name,
                     volume = newVolume.toDouble()
-                )
-
-                queries.updateOneRepMax(
-                    one_rep_max_kg = oneRepMax.toDouble(),
-                    id = exerciseId
                 )
             }
 
@@ -649,6 +649,16 @@ class SqlDelightWorkoutRepository(
                     workoutMode = mode,
                     prType = PRType.MAX_VOLUME.name,
                     volume = newVolume.toDouble()
+                )
+            }
+
+            // Sync 1RM to Exercise table for %-based training features
+            val currentExercise1RM = queries.selectExerciseById(exerciseId)
+                .executeAsOneOrNull()?.one_rep_max_kg?.toFloat() ?: 0f
+            if (oneRepMax > currentExercise1RM) {
+                queries.updateOneRepMax(
+                    one_rep_max_kg = oneRepMax.toDouble(),
+                    id = exerciseId
                 )
             }
         }

@@ -64,6 +64,10 @@ data class RoutineExercise(
     val perSetRestTime: Boolean = false,
     // Stall detection toggle - when true, auto-stops set if user hesitates too long (applies to AMRAP/Just Lift modes)
     val stallDetectionEnabled: Boolean = true,
+    // Rep count timing - when to count working reps (TOP=concentric peak, BOTTOM=eccentric valley)
+    val repCountTiming: RepCountTiming = RepCountTiming.TOP,
+    // Stop at top (contracted position) — applies to fixed-rep sets only, not AMRAP/Just Lift
+    val stopAtTop: Boolean = false,
     // Superset configuration (container model)
     val supersetId: String? = null,       // Reference to parent Superset container
     val orderInSuperset: Int = 0,         // Position within the superset

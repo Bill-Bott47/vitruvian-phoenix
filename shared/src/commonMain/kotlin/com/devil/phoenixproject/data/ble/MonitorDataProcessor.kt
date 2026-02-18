@@ -160,7 +160,11 @@ class MonitorDataProcessor(
             return null  // Skip invalid sample, but position tracking is updated for next sample
         }
 
-        // ===== STAGE 5: VELOCITY CALCULATION =====
+        // ===== STAGE 5: VELOCITY FROM FIRMWARE =====
+        // Hardware-validated 2026-02-17: bytes 6-7 and 12-13 contain firmware velocity
+        // with precise hardware timing. Previously these bytes were skipped and velocity
+        // was calculated client-side from position deltas + System.currentTimeMillis(),
+        // introducing timing jitter and EMA lag. Firmware velocity is authoritative.
         val currentTime = timeProvider()
         val pollIntervalMs = if (lastTimestamp > 0L) currentTime - lastTimestamp else 0L
 
@@ -181,32 +185,27 @@ class MonitorDataProcessor(
             }
         }
 
-        // Calculate raw velocity (SIGNED for proper EMA smoothing - Issue #204, #214)
-        // Using signed velocity allows jitter oscillations (+2, -3, +1mm) to average toward 0
-        // Issue #210: Use previousPosA/B since lastPositionA/B was updated before validateSample
-        val rawVelocityA = calculateRawVelocity(posA, previousPosA, currentTime)
-        val rawVelocityB = calculateRawVelocity(posB, previousPosB, currentTime)
+        // Firmware velocity is raw signed int16 in 0.1mm/s units (matching position's 0.1mm
+        // resolution). Scale by /10.0 to convert to mm/s for downstream consistency:
+        // - HandleStateDetector thresholds: 50.0 / 20.0 mm/s
+        // - Power calculation: load_kg * velocity_mm_s
+        // - MetricSample DB: stored in mm/s
+        // - UI display: shown in mm/s
+        // Hardware-validated: firmware velA=832 at grab ≈ 83.2 mm/s, matching old client-side scale.
+        val rawVelocityA = packet.firmwareVelA / 10.0
+        val rawVelocityB = packet.firmwareVelB / 10.0
 
         // ===== STAGE 6: EMA SMOOTHING =====
-        // Apply Exponential Moving Average smoothing (Issue #204, #214)
-        // Task 10: Initialize EMA with first raw sample to prevent cold start lag
-        // Velocity edge case fix: If previous sample was filtered due to position jump,
-        // the raw velocity calculation used a bad reference position. Skip this sample's
-        // velocity update to avoid propagating the error through the EMA.
-        //
-        // Only update EMA when we have a real velocity (lastTimestamp was > 0, meaning
-        // this is not the very first sample). The first sample establishes position and
-        // timestamp but produces zero velocity -- don't seed EMA with that zero.
+        // Firmware velocity is already hardware-timed so less smoothing is needed,
+        // but keep EMA to filter BLE transmission noise. Same alpha as before.
         if (lastSampleWasFiltered) {
-            // Don't update smoothed velocity - keep previous value
-            // The raw velocity is calculated against the filtered position which is wrong
-            // Next sample will have correct reference since lastPositionA/B were updated
+            // After a filtered sample, firmware velocity is still valid (it doesn't
+            // depend on our position tracking), but skip one sample to stay conservative.
             lastSampleWasFiltered = false
             log.d { "Velocity update skipped - previous sample was filtered" }
-        } else if (lastTimestamp > 0L) {
-            // We have a real velocity (not the first-ever sample)
+        } else {
             if (isFirstVelocitySample) {
-                // Seed EMA with first real velocity to prevent cold start lag (Task 10)
+                // Seed EMA with first firmware velocity
                 smoothedVelocityA = rawVelocityA
                 smoothedVelocityB = rawVelocityB
                 isFirstVelocitySample = false
@@ -216,9 +215,8 @@ class MonitorDataProcessor(
                 smoothedVelocityB = alpha * rawVelocityB + (1 - alpha) * smoothedVelocityB
             }
         }
-        // else: first-ever sample (lastTimestamp == 0), skip EMA entirely
 
-        // Update timestamp for next velocity calculation
+        // Update timestamp for poll rate diagnostics
         lastTimestamp = currentTime
 
         // ===== STAGE 7: BUILD METRIC =====
@@ -287,6 +285,13 @@ class MonitorDataProcessor(
 
         if (sampleStatus.isSpotterActive()) {
             log.d { "MACHINE STATUS: SPOTTER_ACTIVE - Status: 0x${status.toString(16)}" }
+        }
+
+        if (sampleStatus.isRepTopReady()) {
+            log.d { "REP_FLAG: REP_TOP_READY - Status: 0x${status.toString(16)}" }
+        }
+        if (sampleStatus.isRepBottomReady()) {
+            log.d { "REP_FLAG: REP_BOTTOM_READY - Status: 0x${status.toString(16)}" }
         }
     }
 
