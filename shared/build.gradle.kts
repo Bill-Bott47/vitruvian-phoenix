@@ -206,9 +206,9 @@ sqldelight {
     databases {
         create("VitruvianDatabase") {
             packageName.set("com.devil.phoenixproject.database")
-            // Version 11 = initial schema (1) + 10 migrations (1.sqm through 10.sqm)
-            // Explicit version ensures migration 10 runs on devices stuck at version 10
-            version = 11
+            // Version 13 = initial schema (1) + 12 migrations (1.sqm through 12.sqm)
+            // Fixed: was incorrectly 11, now accounts for all migrations including 11.sqm (sync) and 12.sqm (routineId)
+            version = 13
         }
     }
 }

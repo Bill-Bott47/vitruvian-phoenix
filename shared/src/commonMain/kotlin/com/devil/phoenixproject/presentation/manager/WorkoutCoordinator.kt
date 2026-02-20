@@ -195,6 +195,7 @@ class WorkoutCoordinator(
 
     internal var currentRoutineSessionId: String? = null
     internal var currentRoutineName: String? = null
+    internal var currentRoutineId: String? = null
 
     // Training Cycle context for tracking cycle progress when workout completes
     internal var activeCycleId: String? = null

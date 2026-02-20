@@ -400,6 +400,7 @@ data class WorkoutSession(
     // Routine tracking (for grouping sets from the same routine)
     val routineSessionId: String? = null,  // Unique ID for this routine session
     val routineName: String? = null,  // Name of the routine being performed
+    val routineId: String? = null,  // ID of the originating routine (direct FK, added in migration 12)
     // Safety tracking (parity with parent repo v23)
     val safetyFlags: Int = 0,
     val deloadWarningCount: Int = 0,

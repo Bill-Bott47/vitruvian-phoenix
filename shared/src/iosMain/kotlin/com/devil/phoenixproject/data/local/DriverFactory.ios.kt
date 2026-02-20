@@ -54,7 +54,7 @@ actual class DriverFactory {
 
     companion object {
         /** Current schema version - must match SQLDelight (1 + number of .sqm files) */
-        private const val CURRENT_SCHEMA_VERSION = 12L
+        private const val CURRENT_SCHEMA_VERSION = 13L
     }
 
     /**
@@ -477,6 +477,7 @@ actual class DriverFactory {
                 exerciseName TEXT,
                 routineSessionId TEXT,
                 routineName TEXT,
+                routineId TEXT,
                 safetyFlags INTEGER NOT NULL DEFAULT 0,
                 deloadWarningCount INTEGER NOT NULL DEFAULT 0,
                 romViolationCount INTEGER NOT NULL DEFAULT 0,
@@ -837,7 +838,8 @@ actual class DriverFactory {
         safeAddColumn(driver, "RoutineExercise", "stopAtTop", "INTEGER NOT NULL DEFAULT 0")
         safeAddColumn(driver, "RoutineExercise", "repCountTiming", "TEXT NOT NULL DEFAULT 'TOP'")
 
-        // WorkoutSession columns (migration 5 + 11)
+        // WorkoutSession columns (migration 5 + 11 + 12)
+        safeAddColumn(driver, "WorkoutSession", "routineId", "TEXT")
         safeAddColumn(driver, "WorkoutSession", "peakForceConcentricA", "REAL")
         safeAddColumn(driver, "WorkoutSession", "peakForceConcentricB", "REAL")
         safeAddColumn(driver, "WorkoutSession", "peakForceEccentricA", "REAL")

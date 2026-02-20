@@ -433,6 +433,7 @@ abstract class BaseDataBackupManager(
                             exerciseName = session.exerciseName,
                             routineSessionId = session.routineSessionId,
                             routineName = session.routineName,
+                            routineId = session.routineId,
                             safetyFlags = session.safetyFlags.toLong(),
                             deloadWarningCount = session.deloadWarningCount.toLong(),
                             romViolationCount = session.romViolationCount.toLong(),
@@ -957,9 +958,16 @@ abstract class BaseDataBackupManager(
     private fun normalizeRoutineMetadataForBackup(
         session: WorkoutSession,
         routineNameResolutionContext: RoutineNameResolutionContext? = null
-    ): Pair<String, String> {
+    ): Pair<String, String?> {
         val existingSessionId = sanitizeLegacyLabel(session.routineSessionId)
         val existingRoutineName = sanitizeLegacyLabel(session.routineName)
+
+        // Direct lookup via routineId (most reliable - added in migration 12)
+        val directLookupName = session.routineId?.let { routineId ->
+            routineNameResolutionContext?.routineNameById?.get(routineId)
+        }
+
+        // Heuristic inference for legacy sessions without routineId
         val inferredRoutineNameById = session.exerciseId?.let { exerciseId ->
             routineNameResolutionContext?.uniqueRoutineNameByExerciseId?.get(exerciseId)
         }
@@ -973,9 +981,10 @@ abstract class BaseDataBackupManager(
         val normalizedSessionId = existingSessionId ?: "legacy_session_${session.id}"
         val normalizedRoutineName = when {
             session.isJustLift != 0L -> "Just Lift"
+            directLookupName != null -> directLookupName
             inferredRoutineName != null && (existingRoutineName == null || existingLooksLikeExercisePlaceholder) -> inferredRoutineName
-            existingRoutineName != null -> existingRoutineName
-            else -> "Legacy Session"
+            existingRoutineName != null && !existingLooksLikeExercisePlaceholder -> existingRoutineName
+            else -> null  // Can't determine routine - leave null (standalone exercise)
         }
 
         return normalizedSessionId to normalizedRoutineName
@@ -1106,6 +1115,7 @@ abstract class BaseDataBackupManager(
             exerciseName = session.exerciseName,
             routineSessionId = routineSessionId,
             routineName = routineName,
+            routineId = session.routineId,
             safetyFlags = session.safetyFlags.toInt(),
             deloadWarningCount = session.deloadWarningCount.toInt(),
             romViolationCount = session.romViolationCount.toInt(),

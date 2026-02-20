@@ -1337,6 +1337,7 @@ class ActiveSessionEngine(
         if (!isTrackedRoutine) {
             coordinator.currentRoutineSessionId = null
             coordinator.currentRoutineName = null
+            coordinator.currentRoutineId = null
             return
         }
 
@@ -1344,6 +1345,7 @@ class ActiveSessionEngine(
             coordinator.currentRoutineSessionId = KmpUtils.randomUUID()
         }
         coordinator.currentRoutineName = loadedRoutine.name
+        coordinator.currentRoutineId = loadedRoutine.id
     }
 
     fun skipCountdown() {
@@ -1423,6 +1425,7 @@ class ActiveSessionEngine(
                  exerciseName = exerciseName,
                  routineSessionId = coordinator.currentRoutineSessionId,
                  routineName = coordinator.currentRoutineName,
+                 routineId = coordinator.currentRoutineId,
                  peakForceConcentricA = summary.peakForceConcentricA,
                  peakForceConcentricB = summary.peakForceConcentricB,
                  peakForceEccentricA = summary.peakForceEccentricA,
@@ -1636,6 +1639,7 @@ class ActiveSessionEngine(
             exerciseName = exerciseName,
             routineSessionId = coordinator.currentRoutineSessionId,
             routineName = coordinator.currentRoutineName,
+            routineId = coordinator.currentRoutineId,
             peakForceConcentricA = summary.peakForceConcentricA,
             peakForceConcentricB = summary.peakForceConcentricB,
             peakForceEccentricA = summary.peakForceEccentricA,
@@ -2169,6 +2173,7 @@ class ActiveSessionEngine(
             coordinator._currentExerciseIndex.value = 0
             coordinator.currentRoutineSessionId = null
             coordinator.currentRoutineName = null
+            coordinator.currentRoutineId = null
             repCounter.reset()
             resetAutoStopState()
         }

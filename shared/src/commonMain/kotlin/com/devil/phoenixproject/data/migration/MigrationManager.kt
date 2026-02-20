@@ -25,6 +25,8 @@ class MigrationManager(
     private val queries get() = database.vitruvianDatabaseQueries
 
     private data class RoutineNameResolutionContext(
+        val routineNameById: Map<String, String>,
+        val routineIdByExerciseId: Map<String, String>,
         val uniqueRoutineNameByExerciseId: Map<String, String>,
         val uniqueRoutineNameByExerciseName: Map<String, String>
     )
@@ -67,21 +69,35 @@ class MigrationManager(
             }
         val resolutionContext = buildRoutineNameResolutionContext(routines, routineExercises)
 
-        var updatedRows = 0
+        var updatedNameRows = 0
+        var updatedIdRows = 0
         database.transaction {
             sessions.forEach { session ->
+                // Backfill routineId for sessions that have a routineSessionId but no routineId
+                if (session.routineId == null && session.routineSessionId != null) {
+                    val resolvedRoutineId = resolveRoutineIdForSession(session, resolutionContext)
+                    if (resolvedRoutineId != null) {
+                        queries.updateSessionRoutineId(
+                            routineId = resolvedRoutineId,
+                            id = session.id
+                        )
+                        updatedIdRows++
+                    }
+                }
+
+                // Backfill routine name
                 val updatedRoutineName = resolveRoutineNameForSession(session, resolutionContext) ?: return@forEach
                 if (updatedRoutineName == session.routineName) return@forEach
                 queries.updateSessionRoutineName(
                     routineName = updatedRoutineName,
                     id = session.id
                 )
-                updatedRows++
+                updatedNameRows++
             }
         }
 
-        if (updatedRows > 0) {
-            log.i { "Legacy routine-name backfill updated $updatedRows workout sessions" }
+        if (updatedNameRows > 0 || updatedIdRows > 0) {
+            log.i { "Legacy routine backfill: updated $updatedNameRows names, $updatedIdRows routineIds" }
         }
     }
 
@@ -97,9 +113,21 @@ class MigrationManager(
         return when {
             session.isJustLift != 0L -> "Just Lift"
             inferredRoutineName != null && (existingRoutineName == null || existingLooksLikeExercisePlaceholder) -> inferredRoutineName
-            existingRoutineName != null -> existingRoutineName
-            else -> sanitizeLegacyLabel(session.exerciseName)
+            existingRoutineName != null && !existingLooksLikeExercisePlaceholder -> existingRoutineName
+            else -> null  // Can't determine routine - leave null (standalone exercise)
         }
+    }
+
+    /**
+     * Attempt to resolve the routineId for a legacy session by checking if the session's
+     * exerciseId uniquely belongs to a single routine.
+     */
+    private fun resolveRoutineIdForSession(
+        session: WorkoutSession,
+        routineNameResolutionContext: RoutineNameResolutionContext
+    ): String? {
+        val exerciseId = sanitizeLegacyLabel(session.exerciseId) ?: return null
+        return routineNameResolutionContext.routineIdByExerciseId[exerciseId]
     }
 
     private fun inferRoutineName(
@@ -122,6 +150,20 @@ class MigrationManager(
         val routineNameById = routines.associate { routine ->
             routine.id to sanitizeEntityName(routine.name, "Unnamed Routine")
         }
+
+        // Build exerciseId → routineId map for sessions where exercise uniquely belongs to one routine
+        val routineIdsByExerciseId = mutableMapOf<String, MutableSet<String>>()
+        routineExercises.forEach { exercise ->
+            val exerciseId = sanitizeLegacyLabel(exercise.exerciseId) ?: return@forEach
+            routineIdsByExerciseId.getOrPut(exerciseId) { mutableSetOf() }.add(exercise.routineId)
+        }
+        val routineIdByExerciseId = mutableMapOf<String, String>()
+        routineIdsByExerciseId.forEach { (exerciseId, routineIds) ->
+            if (routineIds.size == 1) {
+                routineIdByExerciseId[exerciseId] = routineIds.first()
+            }
+        }
+
         val nonTemplateRoutineIds = routines
             .asSequence()
             .filterNot { it.id.startsWith("cycle_routine_") }
@@ -184,6 +226,8 @@ class MigrationManager(
         }
 
         return RoutineNameResolutionContext(
+            routineNameById = routineNameById,
+            routineIdByExerciseId = routineIdByExerciseId,
             uniqueRoutineNameByExerciseId = uniqueRoutineNameByExerciseId,
             uniqueRoutineNameByExerciseName = uniqueRoutineNameByExerciseName
         )

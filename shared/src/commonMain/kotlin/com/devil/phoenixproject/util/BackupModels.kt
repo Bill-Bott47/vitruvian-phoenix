@@ -41,6 +41,7 @@ data class WorkoutSessionBackup(
     val exerciseName: String? = null,
     val routineSessionId: String? = null,
     val routineName: String? = null,
+    val routineId: String? = null,
     val safetyFlags: Int = 0,
     val deloadWarningCount: Int = 0,
     val romViolationCount: Int = 0,
