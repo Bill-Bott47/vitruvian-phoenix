@@ -1,0 +1,4 @@
+-- Migration 12: Add routineId column to WorkoutSession
+-- Provides a direct link from session to the originating routine,
+-- eliminating the need for heuristic exercise-name-based inference.
+ALTER TABLE WorkoutSession ADD COLUMN routineId TEXT;

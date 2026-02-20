@@ -1038,16 +1038,17 @@ class ActiveSessionEngine(
             val progress = trainingCycleRepository.getCycleProgress(cycleId)
 
             if (cycle != null && progress != null) {
-                val updated = progress.markDayCompleted(dayNumber, cycle.days.size)
+                val updated = progress.markDayCompleted(dayNumber)
                 trainingCycleRepository.updateCycleProgress(updated)
 
                 val completedDay = cycle.days.find { it.dayNumber == dayNumber }
-                val isRotationComplete = updated.rotationCount > progress.rotationCount
+                // Rotation detection: check if this was the last day in the cycle
+                val isRotationComplete = dayNumber >= cycle.days.size
                 coordinator._cycleDayCompletionEvent.value = CycleDayCompletionEvent(
                     dayNumber = dayNumber,
                     dayName = completedDay?.name,
                     isRotationComplete = isRotationComplete,
-                    rotationCount = updated.rotationCount
+                    rotationCount = if (isRotationComplete) progress.rotationCount + 1 else progress.rotationCount
                 )
 
                 Logger.d { "Cycle progress updated: day $dayNumber completed, now on day ${updated.currentDayNumber}" +

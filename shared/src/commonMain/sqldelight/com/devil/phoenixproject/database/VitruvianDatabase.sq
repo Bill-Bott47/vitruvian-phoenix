@@ -1044,7 +1044,8 @@ WHERE cycle_id = ?;
 
 resetCycleProgress:
 UPDATE CycleProgress
-SET current_day_number = 1, cycle_start_date = ?
+SET current_day_number = 1, cycle_start_date = ?, last_completed_date = NULL,
+    last_advanced_at = NULL, completed_days = NULL, missed_days = NULL, rotation_count = 0
 WHERE cycle_id = ?;
 
 deleteCycleProgress:

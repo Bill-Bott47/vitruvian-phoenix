@@ -271,34 +271,19 @@ data class CycleProgress(
     }
 
     /**
-     * Mark a day as completed and advance to the next day.
-     * Any days between currentDayNumber and dayNumber are marked as missed.
+     * Mark a day as completed WITHOUT advancing to the next day.
+     * Day advancement is handled exclusively by [advanceToNextDay] / auto-advance
+     * to prevent double-advancement (Issue #253).
+     *
      * @param dayNumber The day number that was completed
-     * @param totalDays Total number of days in the cycle
-     * @return New CycleProgress with updated values
+     * @return New CycleProgress with updated values (same currentDayNumber)
      */
-    fun markDayCompleted(dayNumber: Int, totalDays: Int): CycleProgress {
-        // Calculate skipped days (between current and completed day)
-        val skippedDays = if (dayNumber > currentDayNumber) {
-            (currentDayNumber until dayNumber).toSet()
-        } else {
-            emptySet()
-        }
-
-        val updatedMissedDays = missedDays + skippedDays
-        val updatedCompletedDays = completedDays + dayNumber
-
-        val nextDay = if (dayNumber >= totalDays) 1 else dayNumber + 1
-        val isNewRotation = nextDay == 1
+    fun markDayCompleted(dayNumber: Int): CycleProgress {
         val now = currentTimeMillis()
-
         return copy(
-            currentDayNumber = nextDay,
+            completedDays = completedDays + dayNumber,
             lastCompletedDate = now,
-            lastAdvancedAt = now,
-            completedDays = if (isNewRotation) emptySet() else updatedCompletedDays,
-            missedDays = if (isNewRotation) emptySet() else updatedMissedDays,
-            rotationCount = if (isNewRotation) rotationCount + 1 else rotationCount
+            lastAdvancedAt = now
         )
     }
 

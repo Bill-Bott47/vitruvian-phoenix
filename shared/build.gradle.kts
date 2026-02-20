@@ -54,12 +54,12 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 // Compose Multiplatform
-                implementation(compose.runtime)
-                implementation(compose.foundation)
-                implementation(compose.material3)
-                implementation(compose.materialIconsExtended)
-                implementation(compose.ui)
-                implementation(compose.components.resources)
+                implementation(libs.cmp.runtime)
+                implementation(libs.cmp.foundation)
+                implementation(libs.cmp.material3)
+                implementation(libs.cmp.material.icons.extended)
+                implementation(libs.cmp.ui)
+                implementation(libs.cmp.components.resources)
 
                 // Lifecycle ViewModel for Compose
                 implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -163,7 +163,7 @@ kotlin {
                 implementation(libs.media3.ui)
 
                 // Compose Preview Tooling (for @Preview in shared module)
-                implementation(compose.uiTooling)
+                implementation(libs.cmp.ui.tooling)
 
                 // Activity Compose (for file picker Activity Result APIs)
                 implementation(libs.androidx.activity.compose)
