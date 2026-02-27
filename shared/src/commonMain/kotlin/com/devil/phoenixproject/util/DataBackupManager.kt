@@ -578,7 +578,12 @@ abstract class BaseDataBackupManager(
                             setWeightsPercentOfPR = exercise.setWeightsPercentOfPR,
                             stallDetectionEnabled = if (exercise.stallDetectionEnabled) 1L else 0L,
                             stopAtTop = if (exercise.stopAtTop) 1L else 0L,
-                            repCountTiming = exercise.repCountTiming
+                            repCountTiming = exercise.repCountTiming,
+                            // Hybrid exercise fields (migration 13) — default to VITRUVIAN for imported backups
+                            exerciseType = "VITRUVIAN",
+                            coachingNote = null,
+                            isTravelSubstitute = 0L,
+                            substitutesExerciseId = null
                         )
                         routineExercisesImported++
                     }

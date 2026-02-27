@@ -31,7 +31,7 @@ import com.devil.phoenixproject.ui.theme.PhoenixAmber
  *   Row { Text("AI Workouts"); Spacer(Modifier.width(6.dp)); PremiumBadge() }
  */
 @Composable
-fun PremiumBadge(modifier: Modifier = Modifier) {
+fun ProBadge(modifier: Modifier = Modifier) {
     val gradient = Brush.horizontalGradient(
         colors = listOf(FlameOrange, PhoenixAmber)
     )
@@ -67,7 +67,7 @@ fun PremiumBadge(modifier: Modifier = Modifier) {
  * LargePremiumBadge — used on paywalls and feature highlight screens.
  */
 @Composable
-fun LargePremiumBadge(modifier: Modifier = Modifier) {
+fun LargeProBadge(modifier: Modifier = Modifier) {
     val gradient = Brush.horizontalGradient(
         colors = listOf(FlameOrange, PhoenixAmber)
     )

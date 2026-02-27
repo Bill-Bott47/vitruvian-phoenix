@@ -49,7 +49,9 @@ class SqlDelightExerciseRepository(
         // Sync fields (migration 6)
         updatedAt: Long?,
         serverId: String?,
-        deletedAt: Long?
+        deletedAt: Long?,
+        // Hybrid exercise support (migration 13)
+        exerciseType: String?
     ): Exercise {
         // Note: defaultCableConfig is stored in DB but no longer used
         return Exercise(
