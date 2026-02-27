@@ -40,8 +40,8 @@ private val DarkColorScheme = darkColorScheme(
     // Surface container roles
     surfaceDim = SurfaceDimDark,
     surfaceBright = SurfaceContainerHighestDark,
-    surfaceContainerLowest = Slate950,
-    surfaceContainerLow = Slate900,
+    surfaceContainerLowest = PhoenixBlack,  // OLED-optimized deepest black
+    surfaceContainerLow = Slate950,
     surfaceContainer = SurfaceContainerDark,
     surfaceContainerHigh = SurfaceContainerHighDark,
     surfaceContainerHighest = SurfaceContainerHighestDark,

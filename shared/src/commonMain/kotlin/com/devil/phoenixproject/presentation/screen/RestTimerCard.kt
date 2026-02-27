@@ -148,11 +148,24 @@ fun RestTimerCard(
                     .height(180.dp),
                 contentAlignment = Alignment.Center
             ) {
-                // Circular background with pulse effect
+                // Circular background with pulse effect — flame glow ring
                 Box(
                     modifier = Modifier
-                        .size(180.dp)
+                        .size(196.dp)
                         .scale(pulse)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    PhoenixGlow,
+                                    PhoenixBlack
+                                )
+                            ),
+                            shape = RoundedCornerShape(200.dp)
+                        )
+                )
+                Box(
+                    modifier = Modifier
+                        .size(172.dp)
                         .background(
                             color = MaterialTheme.colorScheme.surfaceContainerHighest,
                             shape = RoundedCornerShape(200.dp)
