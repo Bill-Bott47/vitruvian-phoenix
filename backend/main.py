@@ -3,6 +3,11 @@ Phoenix App — AI Workout API
 Runs on pai (192.168.1.189:8505)
 Future: deploy to Render/Railway/Fly.io for public launch
 
+⚠️  INTERNAL ONLY — DO NOT EXPOSE TO PUBLIC INTERNET ⚠️
+Current auth uses X-User-Id header which is trivially spoofable.
+This service must remain behind LAN/VPN until Supabase JWT validation
+is implemented in V2. Firewall rule: allow port 8505 from LAN only.
+
 Endpoints:
   GET  /workout/today          → Today's AI-generated workout plan
   POST /workout/complete        → Log a completed workout

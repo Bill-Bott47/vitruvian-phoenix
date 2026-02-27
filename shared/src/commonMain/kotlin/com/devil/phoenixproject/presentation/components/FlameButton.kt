@@ -4,13 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -24,16 +23,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.devil.phoenixproject.ui.theme.DisabledGradientEnd
+import com.devil.phoenixproject.ui.theme.DisabledGradientStart
 import com.devil.phoenixproject.ui.theme.FlameOrange
 import com.devil.phoenixproject.ui.theme.FlameRed
 import com.devil.phoenixproject.ui.theme.FlameYellow
+import com.devil.phoenixproject.ui.theme.PhoenixBlack
 import com.devil.phoenixproject.ui.theme.PhoenixGlow
 
 /**
- * FlameButton — the signature full-width CTA for Phoenix.
+ * FlameButton — the signature full-width CTA for Phoenix/Aurea.
  *
- * Uses the Phoenix flame gradient (red-orange-yellow).
- * Used for: Start Workout, Just Lift, Begin Session, etc.
+ * Uses the Phoenix flame gradient (red → orange → yellow) with an
+ * orange ambient glow shadow. Replaces plain Material buttons for
+ * primary actions: Start Workout, Just Lift, Begin Session, etc.
  *
  * Usage:
  *   FlameButton(text = "START WORKOUT", onClick = { ... })
@@ -48,13 +51,9 @@ fun FlameButton(
     cornerRadius: Dp = 16.dp
 ) {
     val gradient = if (enabled) {
-        Brush.horizontalGradient(
-            colors = listOf(FlameRed, FlameOrange, FlameYellow)
-        )
+        Brush.horizontalGradient(colors = listOf(FlameRed, FlameOrange, FlameYellow))
     } else {
-        Brush.horizontalGradient(
-            colors = listOf(Color(0xFF666666), Color(0xFF888888))
-        )
+        Brush.horizontalGradient(colors = listOf(DisabledGradientStart, DisabledGradientEnd))
     }
 
     val shadowColor = if (enabled) PhoenixGlow else Color.Transparent
@@ -74,7 +73,7 @@ fun FlameButton(
             .background(brush = gradient)
             .clickable(
                 interactionSource = interactionSource,
-                indication = rememberRipple(color = Color.White.copy(alpha = 0.3f)),
+                indication = ripple(color = Color.White.copy(alpha = 0.3f)),
                 enabled = enabled,
                 onClick = onClick
             ),
@@ -94,7 +93,7 @@ fun FlameButton(
 
 /**
  * SecondaryFlameButton — outlined variant for secondary CTAs.
- * Same shape language, but uses a border instead of fill.
+ * Gradient border, dark fill, same shape language as FlameButton.
  */
 @Composable
 fun SecondaryFlameButton(
@@ -102,27 +101,27 @@ fun SecondaryFlameButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     height: Dp = 48.dp,
-    cornerRadius: Dp = 16.dp
+    cornerRadius: Dp = 16.dp,
+    borderWidth: Dp = 1.5.dp
 ) {
     val borderGradient = Brush.horizontalGradient(
         colors = listOf(FlameRed, FlameOrange, FlameYellow)
     )
     val interactionSource = remember { MutableInteractionSource() }
+    // Correct inner radius: outer radius minus border width so corners remain flush
+    val innerRadius = cornerRadius - borderWidth
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(height)
-            .background(
-                brush = borderGradient,
-                shape = RoundedCornerShape(cornerRadius)
-            )
-            .padding(1.5.dp) // border thickness
-            .clip(RoundedCornerShape(cornerRadius - 1.dp))
-            .background(Color(0xFF0F172A)) // Slate900
+            .background(brush = borderGradient, shape = RoundedCornerShape(cornerRadius))
+            .padding(borderWidth)
+            .clip(RoundedCornerShape(innerRadius))
+            .background(PhoenixBlack)
             .clickable(
                 interactionSource = interactionSource,
-                indication = rememberRipple(color = FlameOrange.copy(alpha = 0.2f)),
+                indication = ripple(color = FlameOrange.copy(alpha = 0.2f)),
                 onClick = onClick
             ),
         contentAlignment = Alignment.Center

@@ -266,7 +266,12 @@ class SqlDelightWorkoutRepository(
                     usePercentOfPR = row.usePercentOfPR == 1L,
                     weightPercentOfPR = row.weightPercentOfPR.toInt(),
                     prTypeForScaling = prTypeForScaling,
-                    setWeightsPercentOfPR = setWeightsPercentOfPR
+                    setWeightsPercentOfPR = setWeightsPercentOfPR,
+                    // Hybrid exercise fields (migration 13)
+                    exerciseType = row.exerciseType ?: "VITRUVIAN",
+                    coachingNote = row.coachingNote,
+                    isTravelSubstitute = row.isTravelSubstitute == 1L,
+                    substitutesExerciseId = row.substitutesExerciseId
                 )
             } catch (e: Exception) {
                 Logger.e(e) { "Failed to map routine exercise: ${row.exerciseId}" }
@@ -509,7 +514,12 @@ class SqlDelightWorkoutRepository(
             // Per-exercise behavior overrides
             stallDetectionEnabled = if (exercise.stallDetectionEnabled) 1L else 0L,
             stopAtTop = if (exercise.stopAtTop) 1L else 0L,
-            repCountTiming = exercise.repCountTiming.name
+            repCountTiming = exercise.repCountTiming.name,
+            // Hybrid exercise fields (migration 13)
+            exerciseType = exercise.exerciseType,
+            coachingNote = exercise.coachingNote,
+            isTravelSubstitute = if (exercise.isTravelSubstitute) 1L else 0L,
+            substitutesExerciseId = exercise.substitutesExerciseId
         )
     }
 

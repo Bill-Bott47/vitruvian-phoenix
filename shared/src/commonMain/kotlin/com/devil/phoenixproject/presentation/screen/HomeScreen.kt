@@ -2,6 +2,7 @@ package com.devil.phoenixproject.presentation.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -34,6 +36,7 @@ import com.devil.phoenixproject.presentation.components.AnimatedActionButton
 import com.devil.phoenixproject.presentation.components.IconAnimation
 import com.devil.phoenixproject.presentation.components.FlameButton
 import com.devil.phoenixproject.ui.theme.PhoenixBlack
+import com.devil.phoenixproject.ui.theme.PhoenixEmber
 import com.devil.phoenixproject.ui.theme.FlameOrange
 import com.devil.phoenixproject.ui.theme.PhoenixGlow
 import com.devil.phoenixproject.presentation.util.LocalWindowSizeClass
@@ -352,29 +355,28 @@ private fun ActiveCycleHero(
     }
 
     // Premium dark hero card — flame gradient background
+    // Full card is clickable (navigate to schedule); FlameButton inside starts workout directly
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(28.dp))
             .background(
-                brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                    colors = listOf(
-                        androidx.compose.ui.graphics.Color(0xFF1A1008), // Deep warm dark
-                        PhoenixBlack
-                    )
+                brush = Brush.verticalGradient(
+                    colors = listOf(PhoenixEmber, PhoenixBlack)
                 )
             )
             .border(
                 width = 1.dp,
-                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                brush = Brush.horizontalGradient(
                     colors = listOf(
                         PhoenixGlow,
-                        androidx.compose.ui.graphics.Color.Transparent,
+                        Color.Transparent,
                         PhoenixGlow.copy(alpha = 0.1f)
                     )
                 ),
                 shape = RoundedCornerShape(28.dp)
             )
+            .clickable(onClick = onViewSchedule)
     ) {
         // Ghost icon — massive, subtle, bottom-right
         Icon(

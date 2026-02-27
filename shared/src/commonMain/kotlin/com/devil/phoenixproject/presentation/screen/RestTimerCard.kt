@@ -148,29 +148,30 @@ fun RestTimerCard(
                     .height(180.dp),
                 contentAlignment = Alignment.Center
             ) {
-                // Circular background with pulse effect — flame glow ring
-                Box(
-                    modifier = Modifier
-                        .size(196.dp)
-                        .scale(pulse)
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    PhoenixGlow,
-                                    PhoenixBlack
-                                )
-                            ),
-                            shape = RoundedCornerShape(200.dp)
-                        )
-                )
-                Box(
-                    modifier = Modifier
-                        .size(172.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            shape = RoundedCornerShape(200.dp)
-                        )
-                )
+                // Layered glow ring: outer pulsing glow + inner card surface, overlapping
+                Box(contentAlignment = Alignment.Center) {
+                    // Outer ring — pulses with breath animation
+                    Box(
+                        modifier = Modifier
+                            .size(196.dp)
+                            .scale(pulse)
+                            .background(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(PhoenixGlow, PhoenixBlack)
+                                ),
+                                shape = RoundedCornerShape(200.dp)
+                            )
+                    )
+                    // Inner card — static, sits on top of glow
+                    Box(
+                        modifier = Modifier
+                            .size(172.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                shape = RoundedCornerShape(200.dp)
+                            )
+                    )
+                }
 
                 // Timer text
                 Text(

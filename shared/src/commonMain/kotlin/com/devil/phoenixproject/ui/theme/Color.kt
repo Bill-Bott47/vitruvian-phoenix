@@ -43,6 +43,13 @@ val GlassBorder = Color(0x33FFFFFF)     // 20% white — glass card borders
 val PhoenixGlow = Color(0x40FF9149)     // 25% orange — ambient glow behind hero elements
 val ItalianGold = Color(0xFFD4AF37)     // Da Vinci gold — premium accent
 
+// --- DISABLED STATE ---
+val DisabledGradientStart = Color(0xFF666666)
+val DisabledGradientEnd   = Color(0xFF888888)
+
+// --- NAMED SURFACE TOKENS ---
+val PhoenixEmber = Color(0xFF1A1008)    // Deep warm dark — hero card gradient top
+
 // --- SIGNAL COLORS (Status) ---
 // Intentionally NOT orange to avoid confusion with primary
 val SignalSuccess = Color(0xFF22C55E)  // Green
