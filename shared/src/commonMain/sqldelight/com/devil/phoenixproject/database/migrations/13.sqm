@@ -1,0 +1,30 @@
+-- Migration 13: Hybrid Exercise Support
+-- Enables non-Vitruvian exercises (dumbbells, TRX, bodyweight, rest timers)
+-- to be mixed into routines alongside cable machine exercises.
+--
+-- exerciseType values:
+--   VITRUVIAN  = Vitruvian Trainer+ cable exercise (default, existing behavior)
+--   DUMBBELL   = Dumbbell / free weight exercise
+--   BARBELL    = Barbell exercise
+--   BODYWEIGHT = Bodyweight (push-up, pull-up, plank, etc.)
+--   TRX        = Suspension training
+--   MACHINE    = Generic gym machine (not Vitruvian)
+--   REST_TIMER = Timed rest period — uses 'duration' field as countdown seconds
+
+-- Add exerciseType to the Exercise library
+-- Default VITRUVIAN preserves all existing exercises as cable exercises
+ALTER TABLE Exercise ADD COLUMN exerciseType TEXT NOT NULL DEFAULT 'VITRUVIAN';
+
+-- Add exerciseType to RoutineExercise so each slot in a routine can override
+-- (e.g., a routine can have VITRUVIAN sets + REST_TIMER + DUMBBELL exercises)
+ALTER TABLE RoutineExercise ADD COLUMN exerciseType TEXT NOT NULL DEFAULT 'VITRUVIAN';
+
+-- Add notes field for coaching cues / form tips (used in travel mode)
+ALTER TABLE RoutineExercise ADD COLUMN coachingNote TEXT;
+
+-- Add travelSubstitute flag: when true, this entry was AI-generated as a
+-- travel substitution for a Vitruvian exercise (V2 travel mode)
+ALTER TABLE RoutineExercise ADD COLUMN isTravelSubstitute INTEGER NOT NULL DEFAULT 0;
+
+-- Track which Vitruvian exercise this substitutes (V2 travel mode)
+ALTER TABLE RoutineExercise ADD COLUMN substitutesExerciseId TEXT;
