@@ -28,7 +28,10 @@ CREATE TABLE Exercise (
     -- Sync fields (added in migration 6)
     updatedAt INTEGER,
     serverId TEXT,
-    deletedAt INTEGER
+    deletedAt INTEGER,
+    -- Hybrid exercise support (added in migration 13)
+    -- Values: VITRUVIAN | DUMBBELL | BARBELL | BODYWEIGHT | TRX | MACHINE | REST_TIMER
+    exerciseType TEXT NOT NULL DEFAULT 'VITRUVIAN'
 );
 
 CREATE INDEX idx_exercise_popularity ON Exercise(popularity DESC, name ASC);
@@ -195,6 +198,15 @@ CREATE TABLE RoutineExercise (
     stallDetectionEnabled INTEGER NOT NULL DEFAULT 1,
     stopAtTop INTEGER NOT NULL DEFAULT 0,
     repCountTiming TEXT NOT NULL DEFAULT 'TOP',
+    -- Hybrid exercise support (added in migration 13)
+    -- Values: VITRUVIAN | DUMBBELL | BARBELL | BODYWEIGHT | TRX | MACHINE | REST_TIMER
+    -- Overrides the parent Exercise.exerciseType (allows mixing in a routine)
+    exerciseType TEXT NOT NULL DEFAULT 'VITRUVIAN',
+    -- Coaching cues / form tips shown during workout
+    coachingNote TEXT,
+    -- Travel mode: marks AI-generated substitutions for Vitruvian exercises
+    isTravelSubstitute INTEGER NOT NULL DEFAULT 0,
+    substitutesExerciseId TEXT,
     FOREIGN KEY (routineId) REFERENCES Routine(id) ON DELETE CASCADE,
     FOREIGN KEY (exerciseId) REFERENCES Exercise(id) ON DELETE SET NULL,
     FOREIGN KEY (supersetId) REFERENCES Superset(id) ON DELETE SET NULL
@@ -577,9 +589,10 @@ INSERT INTO RoutineExercise (
     eccentricLoad, echoLevel, progressionKg, restSeconds, duration, setRestSeconds,
     perSetRestTime, isAMRAP, supersetId, orderInSuperset,
     usePercentOfPR, weightPercentOfPR, prTypeForScaling, setWeightsPercentOfPR,
-    stallDetectionEnabled, stopAtTop, repCountTiming
+    stallDetectionEnabled, stopAtTop, repCountTiming,
+    exerciseType, coachingNote, isTravelSubstitute, substitutesExerciseId
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- Insert with IGNORE for import (won't overwrite existing)
 insertRoutineExerciseIgnore:
@@ -589,9 +602,32 @@ INSERT OR IGNORE INTO RoutineExercise (
     eccentricLoad, echoLevel, progressionKg, restSeconds, duration, setRestSeconds,
     perSetRestTime, isAMRAP, supersetId, orderInSuperset,
     usePercentOfPR, weightPercentOfPR, prTypeForScaling, setWeightsPercentOfPR,
-    stallDetectionEnabled, stopAtTop, repCountTiming
+    stallDetectionEnabled, stopAtTop, repCountTiming,
+    exerciseType, coachingNote, isTravelSubstitute, substitutesExerciseId
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Hybrid exercise queries (migration 13)
+
+-- Get all non-Vitruvian exercises in the library (for travel mode exercise picker)
+selectHybridExercises:
+SELECT * FROM Exercise WHERE exerciseType != 'VITRUVIAN' AND archived = 0 ORDER BY name ASC;
+
+-- Get exercises by type
+selectExercisesByType:
+SELECT * FROM Exercise WHERE exerciseType = ? AND archived = 0 ORDER BY name ASC;
+
+-- Get rest timer entries in a routine
+selectRestTimersInRoutine:
+SELECT * FROM RoutineExercise WHERE routineId = ? AND exerciseType = 'REST_TIMER' ORDER BY orderIndex ASC;
+
+-- Get travel substitutes for a routine
+selectTravelSubstitutes:
+SELECT * FROM RoutineExercise WHERE routineId = ? AND isTravelSubstitute = 1 ORDER BY orderIndex ASC;
+
+-- Update exercise type for a routine exercise slot
+updateRoutineExerciseType:
+UPDATE RoutineExercise SET exerciseType = ? WHERE id = ?;
 
 deleteRoutineExercises:
 DELETE FROM RoutineExercise WHERE routineId = ?;

@@ -2,6 +2,7 @@ package com.devil.phoenixproject.presentation.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,9 +17,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.devil.phoenixproject.data.repository.TrainingCycleRepository
 import com.devil.phoenixproject.domain.model.CycleProgress
@@ -31,6 +34,11 @@ import com.devil.phoenixproject.presentation.navigation.NavigationRoutes
 import com.devil.phoenixproject.presentation.viewmodel.MainViewModel
 import com.devil.phoenixproject.presentation.components.AnimatedActionButton
 import com.devil.phoenixproject.presentation.components.IconAnimation
+import com.devil.phoenixproject.presentation.components.FlameButton
+import com.devil.phoenixproject.ui.theme.PhoenixBlack
+import com.devil.phoenixproject.ui.theme.PhoenixEmber
+import com.devil.phoenixproject.ui.theme.FlameOrange
+import com.devil.phoenixproject.ui.theme.PhoenixGlow
 import com.devil.phoenixproject.presentation.util.LocalWindowSizeClass
 import com.devil.phoenixproject.presentation.util.WindowWidthSizeClass
 import com.devil.phoenixproject.ui.theme.ThemeMode
@@ -255,24 +263,31 @@ private fun WeeklyComplianceStrip(
             }
         }
 
-        // Streak badge (centered beneath days of the week)
+        // Streak badge — hero-sized flame counter
         if (workoutStreak != null && workoutStreak > 0) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(top = 8.dp)
+                modifier = Modifier.padding(top = 12.dp)
             ) {
                 Icon(
                     Icons.Default.LocalFireDepartment,
                     contentDescription = "Streak",
-                    tint = Color(0xFFFF6B00),
-                    modifier = Modifier.size(24.dp)
+                    tint = FlameOrange,
+                    modifier = Modifier.size(32.dp)
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
                     "$workoutStreak",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = FlameOrange
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "day streak",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.align(Alignment.Bottom).padding(bottom = 4.dp)
                 )
             }
         }
@@ -339,78 +354,124 @@ private fun ActiveCycleHero(
         WindowWidthSizeClass.Compact -> 200.dp
     }
 
-    Card(
-        onClick = onViewSchedule,
-        modifier = Modifier.fillMaxWidth().height(heroCardHeight),
-        shape = RoundedCornerShape(28.dp), // Expressive shape
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    // Premium dark hero card — flame gradient background
+    // Full card is clickable (navigate to schedule); FlameButton inside starts workout directly
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(28.dp))
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(PhoenixEmber, PhoenixBlack)
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        PhoenixGlow,
+                        Color.Transparent,
+                        PhoenixGlow.copy(alpha = 0.1f)
+                    )
+                ),
+                shape = RoundedCornerShape(28.dp)
+            )
+            .clickable(onClick = onViewSchedule)
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Background Image/Icon Placeholder (Right aligned, subtle)
-            Icon(
-                imageVector = if (isRest) Icons.Default.SelfImprovement else Icons.Default.FitnessCenter,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.05f),
-                modifier = Modifier
-                    .size(heroImageSize)
-                    .align(Alignment.BottomEnd)
-                    .offset(x = 40.dp, y = 40.dp)
+        // Ghost icon — massive, subtle, bottom-right
+        Icon(
+            imageVector = if (isRest) Icons.Default.SelfImprovement else Icons.Default.FitnessCenter,
+            contentDescription = null,
+            tint = PhoenixGlow,
+            modifier = Modifier
+                .size(heroImageSize)
+                .align(Alignment.BottomEnd)
+                .offset(x = 40.dp, y = 40.dp)
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp)
+        ) {
+            // Status pill
+            Surface(
+                color = if (isRest)
+                    MaterialTheme.colorScheme.surfaceVariant
+                else
+                    PhoenixGlow,
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text = if (isRest) "REST DAY" else "TODAY",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    color = if (isRest)
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    else
+                        FlameOrange
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                text = cycleDay?.name ?: "Day $currentDayNum",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = androidx.compose.ui.graphics.Color.White
             )
 
-            Column(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .align(Alignment.TopStart)
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        text = if (isRest) "REST DAY" else "UP NEXT",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-
-                Spacer(Modifier.height(12.dp))
-
+            if (routine != null) {
                 Text(
-                    text = cycleDay?.name ?: "Day $currentDayNum",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    text = routine.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.65f)
                 )
+            } else if (isRest) {
+                Text(
+                    text = "Take it easy today.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.65f)
+                )
+            }
 
-                if (routine != null) {
-                    Text(
-                        text = routine.name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+            Spacer(Modifier.height(20.dp))
+
+            // Cycle progress bar
+            if (cycle.days.isNotEmpty()) {
+                val progressValue = currentDayNum.toFloat() / cycle.days.size.toFloat()
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    LinearProgressIndicator(
+                        progress = { progressValue },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = FlameOrange,
+                        trackColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.1f),
+                        drawStopIndicator = {}
                     )
-                } else if (isRest) {
+                    Spacer(Modifier.width(10.dp))
                     Text(
-                        text = "Take it easy today.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        text = "Day $currentDayNum of ${cycle.days.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.5f)
                     )
                 }
             }
 
-            // Progress Bar at bottom (replaces dot indicators)
-            if (cycle.days.isNotEmpty()) {
-                val progressValue = currentDayNum.toFloat() / cycle.days.size.toFloat()
-                LinearProgressIndicator(
-                    progress = { progressValue },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .align(Alignment.BottomCenter),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f),
-                    drawStopIndicator = {}
+            // CTA
+            if (!isRest) {
+                FlameButton(
+                    text = "START TODAY'S WORKOUT",
+                    onClick = onViewSchedule,
+                    height = 52.dp
                 )
             }
         }

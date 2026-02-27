@@ -75,7 +75,13 @@ data class RoutineExercise(
     val usePercentOfPR: Boolean = false,           // Toggle: use % instead of absolute weight
     val weightPercentOfPR: Int = 80,               // Percentage (e.g., 80 = 80%)
     val prTypeForScaling: PRType = PRType.MAX_WEIGHT,  // Which PR type to scale from
-    val setWeightsPercentOfPR: List<Int> = emptyList() // Per-set percentages
+    val setWeightsPercentOfPR: List<Int> = emptyList(), // Per-set percentages
+    // Hybrid exercise support (migration 13)
+    // Values: VITRUVIAN | DUMBBELL | BARBELL | BODYWEIGHT | TRX | MACHINE | REST_TIMER
+    val exerciseType: String = "VITRUVIAN",
+    val coachingNote: String? = null,              // Form cue shown during workout
+    val isTravelSubstitute: Boolean = false,       // True = AI-generated travel substitution
+    val substitutesExerciseId: String? = null      // Which Vitruvian exercise this replaces
 ) {
     /** Returns true if this exercise is part of a superset */
     val isInSuperset: Boolean get() = supersetId != null
