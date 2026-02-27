@@ -132,11 +132,10 @@ fun EnhancedMainScreen(
 
     // Show BottomBar only for main tabs
     val shouldShowBottomBar = remember(currentRoute) {
-        currentRoute == NavigationRoutes.Home.route ||
-        currentRoute == NavigationRoutes.DailyRoutines.route ||
-        currentRoute == NavigationRoutes.TrainingCycles.route ||
-        currentRoute == NavigationRoutes.Analytics.route ||
-        currentRoute == NavigationRoutes.Settings.route
+        // Show bottom nav everywhere except full-screen immersive screens
+        currentRoute != NavigationRoutes.ActiveWorkout.route &&
+        currentRoute != NavigationRoutes.RoutineComplete.route &&
+        currentRoute != NavigationRoutes.SetReady.route
     }
 
     // Show back button for all screens except Home
