@@ -37,7 +37,7 @@ private val GlassBorder = Color(0x33FFFFFF)
  */
 @Composable
 fun OnboardingScreen(
-    onComplete: () -> Unit,
+    onComplete: (appName: String, goals: Set<String>, hasVitruvian: Boolean, hasDumbbells: Boolean, hasTRX: Boolean, hasPullUpBar: Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var currentStep by remember { mutableIntStateOf(0) }
@@ -112,8 +112,15 @@ fun OnboardingScreen(
                     onBack = { currentStep = 1 }
                 )
                 3 -> ConnectStepContent(
+                    appName = selectedAppName,
+                    goals = selectedGoals,
                     hasVitruvian = hasVitruvian,
-                    onComplete = onComplete,
+                    hasDumbbells = hasDumbbells,
+                    hasTRX = hasTRX,
+                    hasPullUpBar = hasPullUpBar,
+                    onComplete = { appName, goals, vitruvian, dumbbells, trx, pullUpBar ->
+                        onComplete(appName, goals, vitruvian, dumbbells, trx, pullUpBar)
+                    },
                     onBack = { currentStep = 2 }
                 )
             }
@@ -441,8 +448,13 @@ private fun EquipmentRow(
 
 @Composable
 private fun ConnectStepContent(
+    appName: String,
+    goals: Set<String>,
     hasVitruvian: Boolean,
-    onComplete: () -> Unit,
+    hasDumbbells: Boolean,
+    hasTRX: Boolean,
+    hasPullUpBar: Boolean,
+    onComplete: (appName: String, goals: Set<String>, hasVitruvian: Boolean, hasDumbbells: Boolean, hasTRX: Boolean, hasPullUpBar: Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     var isConnecting by remember { mutableStateOf(false) }
@@ -524,6 +536,13 @@ private fun ConnectStepContent(
                     fontWeight = FontWeight.Bold
                 )
             }
+
+            // Call onComplete when connected
+            if (isConnected) {
+                LaunchedEffect(isConnected) {
+                    onComplete(appName, goals, hasVitruvian, hasDumbbells, hasTRX, hasPullUpBar)
+                }
+            }
         } else {
             Text(
                 text = "No Vitruvian?\nNo problem.",
@@ -544,7 +563,9 @@ private fun ConnectStepContent(
             Spacer(modifier = Modifier.weight(1f))
 
             Button(
-                onClick = onComplete,
+                onClick = { 
+                    onComplete(appName, goals, hasVitruvian, hasDumbbells, hasTRX, hasPullUpBar)
+                },
                 colors = ButtonDefaults.buttonColors(containerColor = FlameOrange),
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             ) {

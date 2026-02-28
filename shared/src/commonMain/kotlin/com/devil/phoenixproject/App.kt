@@ -11,9 +11,11 @@ import com.devil.phoenixproject.data.repository.ExerciseRepository
 import com.devil.phoenixproject.data.sync.SyncTriggerManager
 import com.devil.phoenixproject.presentation.screen.EnhancedMainScreen
 import com.devil.phoenixproject.presentation.screen.EulaScreen
+import com.devil.phoenixproject.presentation.screen.OnboardingScreen
 import com.devil.phoenixproject.presentation.screen.SplashScreen
 import com.devil.phoenixproject.presentation.viewmodel.EulaViewModel
 import com.devil.phoenixproject.presentation.viewmodel.MainViewModel
+import com.devil.phoenixproject.presentation.viewmodel.OnboardingViewModel
 import com.devil.phoenixproject.presentation.viewmodel.ThemeViewModel
 import com.devil.phoenixproject.ui.theme.VitruvianTheme
 import kotlinx.coroutines.delay
@@ -60,6 +62,10 @@ fun App() {
     val eulaViewModel = koinViewModel<EulaViewModel>()
     co.touchlab.kermit.Logger.i { "iOS App: EulaViewModel created" }
 
+    co.touchlab.kermit.Logger.i { "iOS App: Creating OnboardingViewModel..." }
+    val onboardingViewModel = koinViewModel<OnboardingViewModel>()
+    co.touchlab.kermit.Logger.i { "iOS App: OnboardingViewModel created" }
+
     co.touchlab.kermit.Logger.i { "iOS App: Injecting repositories..." }
     val exerciseRepository = koinInject<ExerciseRepository>()
     val syncTriggerManager = koinInject<SyncTriggerManager>()
@@ -71,13 +77,16 @@ fun App() {
     // EULA acceptance state
     val eulaAccepted by eulaViewModel.eulaAccepted.collectAsState()
 
-    // Splash screen state - only show splash if EULA is already accepted
+    // Onboarding completion state
+    val onboardingCompleted by onboardingViewModel.onboardingCompleted.collectAsState()
+
+    // Splash screen state - only show splash if EULA and onboarding are already done
     var showSplash by remember { mutableStateOf(eulaAccepted) }
 
     // Hide splash after animation completes (2500ms for full effect)
-    // Only run if EULA is accepted
-    LaunchedEffect(eulaAccepted) {
-        if (eulaAccepted) {
+    // Only run if EULA is accepted and onboarding is completed
+    LaunchedEffect(eulaAccepted, onboardingCompleted) {
+        if (eulaAccepted && onboardingCompleted) {
             showSplash = true
             delay(2500)
             showSplash = false
@@ -94,8 +103,22 @@ fun App() {
                 EulaScreen(
                     onAccept = { eulaViewModel.acceptEula() }
                 )
+            } else if (!onboardingCompleted) {
+                // Onboarding flow - shown after EULA but before main
+                OnboardingScreen(
+                    onComplete = { appName, goals, vitruvian, dumbbells, trx, pullUpBar ->
+                        onboardingViewModel.completeOnboarding(
+                            appName = appName,
+                            goals = goals,
+                            hasVitruvian = vitruvian,
+                            hasDumbbells = dumbbells,
+                            hasTRX = trx,
+                            hasPullUpBar = pullUpBar
+                        )
+                    }
+                )
             } else {
-                // Main content (only rendered after EULA accepted)
+                // Main content (only rendered after EULA and onboarding completed)
                 if (!showSplash) {
                     EnhancedMainScreen(
                         viewModel = viewModel,
