@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0a; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: -apple-system, sans-serif; }
+  .phone { width: 390px; height: 844px; background: #080808; border-radius: 44px; overflow: hidden; position: relative; border: 1px solid #222; }
+  
+  /* Status bar */
+  .status { display: flex; justify-content: space-between; padding: 14px 24px 0; color: #fff; font-size: 12px; font-weight: 600; }
+  
+  /* Header */
+  .header { padding: 16px 24px 0; }
+  .header-top { display: flex; justify-content: space-between; align-items: center; }
+  .logo { font-size: 22px; font-weight: 900; letter-spacing: 4px; background: linear-gradient(135deg, #FF6B35, #FF8C00, #FFD700); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-transform: uppercase; }
+  .pro-badge { background: linear-gradient(135deg, #FF6B35, #FF8C00); color: #000; font-size: 9px; font-weight: 900; padding: 3px 8px; border-radius: 4px; letter-spacing: 1px; }
+  .greeting { color: #888; font-size: 13px; margin-top: 4px; }
+  .greeting span { color: #FF8C00; font-weight: 600; }
+
+  /* Hero streak card */
+  .hero { margin: 20px 24px 0; background: linear-gradient(135deg, #1a0a00, #2d1200); border: 1px solid #FF6B3530; border-radius: 20px; padding: 20px; position: relative; overflow: hidden; }
+  .hero::before { content: ''; position: absolute; top: -40px; right: -40px; width: 160px; height: 160px; background: radial-gradient(circle, #FF6B3540, transparent 70%); }
+  .hero-label { color: #FF6B35; font-size: 10px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; }
+  .hero-number { font-size: 72px; font-weight: 900; color: #fff; line-height: 1; margin: 4px 0; }
+  .hero-number span { font-size: 20px; color: #FF8C00; }
+  .hero-sub { color: #666; font-size: 12px; font-weight: 500; }
+  .ember-dots { display: flex; gap: 4px; margin-top: 12px; }
+  .ember-dot { width: 8px; height: 8px; border-radius: 2px; background: #FF6B35; }
+  .ember-dot.inactive { background: #222; }
+  .ember-dot.hot { background: linear-gradient(135deg, #FF6B35, #FFD700); }
+
+  /* Quick stats row */
+  .stats-row { display: flex; gap: 12px; margin: 16px 24px 0; }
+  .stat-card { flex: 1; background: #111; border: 1px solid #1f1f1f; border-radius: 14px; padding: 14px; }
+  .stat-num { font-size: 22px; font-weight: 800; color: #fff; }
+  .stat-label { font-size: 10px; color: #555; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-top: 2px; }
+
+  /* Section */
+  .section-label { color: #444; font-size: 10px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; margin: 20px 24px 12px; }
+
+  /* Mode buttons */
+  .modes { display: flex; gap: 10px; padding: 0 24px; flex-wrap: wrap; }
+  .mode-btn { flex: 1; min-width: 45%; background: #111; border: 1px solid #1f1f1f; border-radius: 16px; padding: 16px; }
+  .mode-btn.primary { background: linear-gradient(135deg, #1a0a00, #2d1500); border-color: #FF6B3540; }
+  .mode-icon { font-size: 24px; margin-bottom: 8px; }
+  .mode-title { color: #fff; font-size: 13px; font-weight: 700; }
+  .mode-sub { color: #555; font-size: 10px; margin-top: 2px; }
+
+  /* Bottom nav */
+  .bottom-nav { position: absolute; bottom: 0; left: 0; right: 0; background: #0d0d0d; border-top: 1px solid #1a1a1a; display: flex; padding: 12px 0 28px; }
+  .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .nav-icon { font-size: 20px; }
+  .nav-label { font-size: 10px; color: #444; font-weight: 600; }
+  .nav-item.active .nav-label { color: #FF8C00; }
+  .nav-item.active .nav-icon { filter: drop-shadow(0 0 6px #FF8C00); }
+
+  /* Direction label */
+  .direction-label { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); background: #FF6B35; color: #000; font-size: 9px; font-weight: 900; padding: 2px 10px; border-radius: 20px; letter-spacing: 1px; z-index: 10; }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="direction-label">DIRECTION 1 — EMBER FORGE</div>
+  <div class="status">
+    <span>9:41</span>
+    <span>●●●</span>
+  </div>
+  
+  <div class="header">
+    <div class="header-top">
+      <div class="logo">AUREA</div>
+      <div class="pro-badge">PRO</div>
+    </div>
+    <div class="greeting">Good morning, <span>Jonathan</span></div>
+  </div>
+
+  <div class="hero">
+    <div class="hero-label">🔥 CURRENT STREAK</div>
+    <div class="hero-number">14<span> days</span></div>
+    <div class="hero-sub">Personal best: 21 days</div>
+    <div class="ember-dots">
+      <div class="ember-dot hot"></div>
+      <div class="ember-dot hot"></div>
+      <div class="ember-dot hot"></div>
+      <div class="ember-dot"></div>
+      <div class="ember-dot"></div>
+      <div class="ember-dot"></div>
+      <div class="ember-dot inactive"></div>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-num">23</div>
+      <div class="stat-label">Sessions</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:#FF8C00">186<small style="font-size:14px">kg</small></div>
+      <div class="stat-label">Max Load</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">4.2<small style="font-size:14px">h</small></div>
+      <div class="stat-label">This Week</div>
+    </div>
+  </div>
+
+  <div class="section-label">START TRAINING</div>
+
+  <div class="modes">
+    <div class="mode-btn primary">
+      <div class="mode-icon">⚡</div>
+      <div class="mode-title">Quick Lift</div>
+      <div class="mode-sub">No plan needed</div>
+    </div>
+    <div class="mode-btn">
+      <div class="mode-icon">📋</div>
+      <div class="mode-title">My Routines</div>
+      <div class="mode-sub">8 saved plans</div>
+    </div>
+    <div class="mode-btn">
+      <div class="mode-icon">🔄</div>
+      <div class="mode-title">Training Cycle</div>
+      <div class="mode-sub">Day 3 of 14</div>
+    </div>
+    <div class="mode-btn">
+      <div class="mode-icon">🎯</div>
+      <div class="mode-title">Single Exercise</div>
+      <div class="mode-sub">Focus mode</div>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <div class="nav-item active">
+      <div class="nav-icon">🏠</div>
+      <div class="nav-label">Home</div>
+    </div>
+    <div class="nav-item">
+      <div class="nav-icon">📊</div>
+      <div class="nav-label">Analytics</div>
+    </div>
+    <div class="nav-item">
+      <div class="nav-icon">🏋️</div>
+      <div class="nav-label">Exercises</div>
+    </div>
+    <div class="nav-item">
+      <div class="nav-icon">⚙️</div>
+      <div class="nav-label">Settings</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

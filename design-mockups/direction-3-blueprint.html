@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #050508; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+  .phone { width: 390px; height: 844px; background: #06060A; border-radius: 44px; overflow: hidden; position: relative; border: 1px solid #1a1a2e; font-family: 'Space Grotesk', sans-serif; }
+
+  /* Blueprint grid overlay */
+  .phone::before { content: ''; position: absolute; inset: 0; background-image: linear-gradient(rgba(100,149,237,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(100,149,237,0.03) 1px, transparent 1px); background-size: 24px 24px; pointer-events: none; z-index: 0; }
+
+  .status { display: flex; justify-content: space-between; padding: 14px 24px 0; color: #4a6fa5; font-size: 11px; font-weight: 500; letter-spacing: 1px; position: relative; z-index: 1; }
+
+  /* Top header */
+  .header { padding: 16px 24px 16px; border-bottom: 1px solid #0d1a33; position: relative; z-index: 1; }
+  .logo-row { display: flex; align-items: center; justify-content: space-between; }
+  .logo { font-size: 14px; font-weight: 700; letter-spacing: 6px; color: #6495ED; text-transform: uppercase; }
+  .logo-mark { width: 32px; height: 32px; border: 1.5px solid #6495ED40; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #6495ED; }
+  .tagline { font-size: 9px; color: #2a3a5c; letter-spacing: 3px; text-transform: uppercase; margin-top: 4px; }
+
+  /* Body content */
+  .body { padding: 0 24px; position: relative; z-index: 1; }
+
+  /* Vitruvian figure reference - decorative */
+  .vitruvian-ref { position: absolute; right: 20px; top: 90px; width: 80px; height: 80px; opacity: 0.06; font-size: 70px; z-index: 0; }
+
+  /* Data HUD style */
+  .hud-section { margin-top: 20px; }
+  .hud-label { font-size: 9px; color: #2a3a5c; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .hud-label::after { content: ''; flex: 1; height: 1px; background: #0d1a33; }
+
+  /* Metrics bar */
+  .metrics-bar { display: flex; gap: 12px; }
+  .metric-box { flex: 1; border: 1px solid #0d1a33; border-radius: 8px; padding: 12px 10px; background: #08080f; position: relative; overflow: hidden; }
+  .metric-box::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: #6495ED30; }
+  .metric-box.highlight::before { background: linear-gradient(90deg, #6495ED, #4169E1); }
+  .metric-num { font-size: 28px; font-weight: 700; color: #fff; line-height: 1; }
+  .metric-unit { font-size: 9px; color: #6495ED; letter-spacing: 1px; margin-top: 1px; }
+  .metric-lbl { font-size: 8px; color: #2a3a5c; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px; }
+
+  /* Streak visualization */
+  .streak-viz { border: 1px solid #0d1a33; border-radius: 8px; padding: 14px; background: #08080f; margin-top: 12px; }
+  .streak-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .streak-count { font-size: 32px; font-weight: 700; color: #fff; }
+  .streak-count span { font-size: 12px; color: #6495ED; }
+  .streak-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .sg-cell { aspect-ratio: 1; border-radius: 3px; background: #0d1a33; }
+  .sg-cell.done { background: #6495ED; }
+  .sg-cell.today { background: transparent; border: 1.5px solid #6495ED; box-shadow: 0 0 6px #6495ED50; }
+  .sg-day { font-size: 7px; color: #2a3a5c; text-align: center; margin-top: 3px; letter-spacing: 0.5px; }
+
+  /* Training modes - technical list */
+  .mode-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .mode-item { border: 1px solid #0d1a33; border-radius: 8px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; background: #08080f; }
+  .mode-item.primary { border-color: #6495ED40; background: #080814; }
+  .mode-num { font-size: 9px; color: #2a3a5c; font-weight: 700; letter-spacing: 1px; min-width: 20px; }
+  .mode-info { flex: 1; }
+  .mode-name { font-size: 13px; color: #dde; font-weight: 600; }
+  .mode-detail { font-size: 9px; color: #2a3a5c; margin-top: 2px; letter-spacing: 0.5px; }
+  .mode-item.primary .mode-name { color: #6495ED; }
+  .mode-chevron { font-size: 12px; color: #2a3a5c; }
+  .mode-item.primary .mode-chevron { color: #6495ED; }
+
+  /* Bottom nav */
+  .bottom-nav { position: absolute; bottom: 0; left: 0; right: 0; background: #06060A; border-top: 1px solid #0d1a33; display: flex; padding: 12px 0 28px; z-index: 2; }
+  .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .nav-line { width: 16px; height: 2px; background: #0d1a33; border-radius: 1px; margin-bottom: 2px; }
+  .nav-item.active .nav-line { background: #6495ED; }
+  .nav-label { font-size: 9px; color: #2a3a5c; letter-spacing: 1px; text-transform: uppercase; }
+  .nav-item.active .nav-label { color: #6495ED; }
+
+  .direction-label { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); background: #6495ED; color: #000; font-size: 9px; font-weight: 900; padding: 2px 10px; border-radius: 20px; letter-spacing: 1px; z-index: 10; }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="direction-label">DIRECTION 3 — DA VINCI BLUEPRINT</div>
+  <div class="vitruvian-ref">🤸</div>
+
+  <div class="status"><span>09:41</span><span style="letter-spacing:2px">▲▲▲ ▌▌</span></div>
+
+  <div class="header">
+    <div class="logo-row">
+      <div class="logo">Vitruviano</div>
+      <div class="logo-mark">V</div>
+    </div>
+    <div class="tagline">Precision · Intelligence · Form</div>
+  </div>
+
+  <div class="body">
+    <div class="hud-section">
+      <div class="hud-label">BIOMETRICS</div>
+      <div class="metrics-bar">
+        <div class="metric-box highlight">
+          <div class="metric-num">14</div>
+          <div class="metric-unit">day streak</div>
+          <div class="metric-lbl">Active Streak</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-num">23</div>
+          <div class="metric-unit">sessions</div>
+          <div class="metric-lbl">This Month</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-num">186</div>
+          <div class="metric-unit">kg max</div>
+          <div class="metric-lbl">Peak Load</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hud-section">
+      <div class="hud-label">WEEK 09 · 2026</div>
+      <div class="streak-viz">
+        <div class="streak-top">
+          <div>
+            <div class="streak-count">14<span> days</span></div>
+            <div style="font-size:9px; color:#2a3a5c; letter-spacing:2px; text-transform:uppercase; margin-top:2px;">Current Run</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:9px; color:#6495ED">→ 21 best</div>
+            <div style="font-size:8px; color:#2a3a5c; margin-top:3px;">67% to PB</div>
+          </div>
+        </div>
+        <div class="streak-grid">
+          <div class="sg-cell done"></div><div class="sg-cell done"></div><div class="sg-cell done"></div>
+          <div class="sg-cell today"></div><div class="sg-cell"></div><div class="sg-cell"></div><div class="sg-cell"></div>
+        </div>
+        <div class="streak-grid" style="margin-top:4px">
+          <div class="sg-day">M</div><div class="sg-day">T</div><div class="sg-day">W</div>
+          <div class="sg-day" style="color:#6495ED">T</div><div class="sg-day">F</div><div class="sg-day">S</div><div class="sg-day">S</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hud-section">
+      <div class="hud-label">TRAINING PROTOCOLS</div>
+      <div class="mode-list">
+        <div class="mode-item primary">
+          <div class="mode-num">01</div>
+          <div class="mode-info">
+            <div class="mode-name">Free Session</div>
+            <div class="mode-detail">Unstructured · Any exercise · Full control</div>
+          </div>
+          <div class="mode-chevron">→</div>
+        </div>
+        <div class="mode-item">
+          <div class="mode-num">02</div>
+          <div class="mode-info">
+            <div class="mode-name">Daily Routine</div>
+            <div class="mode-detail">Push A · 8 exercises · ~45 min</div>
+          </div>
+          <div class="mode-chevron">›</div>
+        </div>
+        <div class="mode-item">
+          <div class="mode-num">03</div>
+          <div class="mode-info">
+            <div class="mode-name">Training Cycle</div>
+            <div class="mode-detail">Day 3/14 · Upper Body Volume</div>
+          </div>
+          <div class="mode-chevron">›</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <div class="nav-item active"><div class="nav-line"></div><div class="nav-label">Home</div></div>
+    <div class="nav-item"><div class="nav-line"></div><div class="nav-label">Analytics</div></div>
+    <div class="nav-item"><div class="nav-line"></div><div class="nav-label">Exercises</div></div>
+    <div class="nav-item"><div class="nav-line"></div><div class="nav-label">Settings</div></div>
+  </div>
+</div>
+</body>
+</html>
