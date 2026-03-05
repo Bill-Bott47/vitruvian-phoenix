@@ -788,18 +788,16 @@ class ActiveSessionEngine(
         try {
             val params = coordinator._workoutParameters.value
 
-            val command = if (!params.isEchoMode) {
-                BlePacketFactory.createWorkoutCommand(
-                    params.programMode,
-                    weightKg,
-                    params.reps
-                )
-            } else {
+            if (params.isEchoMode) {
                 return
             }
 
+            // Use full PROGRAM frame (0x04) for weight updates; legacy 0x4F frames are ignored on Trainer+
+            val updatedParams = params.copy(weightPerCableKg = weightKg)
+            val command = BlePacketFactory.createProgramParams(updatedParams)
+
             bleRepository.sendWorkoutCommand(command)
-            Logger.d("Weight update sent to machine: $weightKg kg")
+            Logger.d("Weight update sent to machine (PROGRAM frame): $weightKg kg")
         } catch (e: Exception) {
             Logger.e(e) { "Failed to send weight update: ${e.message}" }
         }
